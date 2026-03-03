@@ -1,0 +1,16 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+python-telegram-bot==21.9
+google-generativeai==0.8.5
+yfinance==0.2.51
+aiohttp==3.11.11
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+aiosqlite==0.20.0
+jinja2==3.1.5
+python-dotenv==1.0.1
+feedparser==6.0.11
+beautifulsoup4==4.12.3
+httpx==0.28.1
+matplotlib==3.9.4
+mplfinance==0.12.10b0

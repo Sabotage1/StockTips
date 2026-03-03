@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockTips AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Ambient background blobs -->
+<div class="ambient">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+</div>
+
+<!-- Header -->
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#lg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6c5ce7"/></linearGradient></defs>
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+            </svg>
+            <span>Stock<em>Tips</em></span>
+        </div>
+        <nav class="nav">
+            <button class="nav-btn active" data-panel="analyze">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Analyze
+            </button>
+            <button class="nav-btn" data-panel="history">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </button>
+        </nav>
+    </div>
+</header>
+
+<main class="main">
+
+    <!-- ANALYZE PANEL -->
+    <div id="panel-analyze" class="panel active">
+
+        <!-- Hero search -->
+        <div class="hero">
+            <h2 class="hero-title">AI-Powered Stock Analysis</h2>
+            <p class="hero-sub">Technical patterns, fundamentals, news sentiment — analyzed in seconds</p>
+            <div class="search-wrap">
+                <div class="search-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </div>
+                <input type="text" id="tickerInput" placeholder="Enter ticker symbol  (AAPL, TSLA, MSFT ...)" maxlength="10" autocomplete="off" spellcheck="false" autofocus>
+                <button class="btn-go" id="analyzeBtn">
+                    <span class="btn-text">Analyze</span>
+                    <svg class="btn-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+            </div>
+            <div class="hero-chips">
+                <span class="chip" onclick="quickAnalyze('AAPL')">AAPL</span>
+                <span class="chip" onclick="quickAnalyze('TSLA')">TSLA</span>
+                <span class="chip" onclick="quickAnalyze('NVDA')">NVDA</span>
+                <span class="chip" onclick="quickAnalyze('MSFT')">MSFT</span>
+                <span class="chip" onclick="quickAnalyze('AMZN')">AMZN</span>
+                <span class="chip" onclick="quickAnalyze('GOOGL')">GOOGL</span>
+                <span class="chip" onclick="quickAnalyze('META')">META</span>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="loading">
+            <div class="pulse-ring"></div>
+            <p class="loading-text">Analyzing</p>
+            <p class="loading-sub">Gathering data from multiple sources...</p>
+        </div>
+
+        <!-- Result -->
+        <div id="resultCard" class="result-card"></div>
+    </div>
+
+    <!-- HISTORY PANEL -->
+    <div id="panel-history" class="panel">
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">Analyses</div>
+            </div>
+            <div class="stat-card stat-buy">
+                <div class="stat-value" id="statBuys">0</div>
+                <div class="stat-label">Buy</div>
+            </div>
+            <div class="stat-card stat-sell">
+                <div class="stat-value" id="statSells">0</div>
+                <div class="stat-label">Sell</div>
+            </div>
+            <div class="stat-card stat-hold">
+                <div class="stat-value" id="statHolds">0</div>
+                <div class="stat-label">Hold</div>
+            </div>
+        </div>
+
+        <div class="history-bar">
+            <input type="text" class="filter-input" id="filterTicker" placeholder="Filter ticker...">
+            <select class="filter-select" id="filterSource">
+                <option value="">All sources</option>
+                <option value="web">Web</option>
+                <option value="telegram">Telegram</option>
+            </select>
+        </div>
+
+        <div class="table-wrap">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Company</th>
+                        <th>Price</th>
+                        <th>Signal</th>
+                        <th>Confidence</th>
+                        <th>Source</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td colspan="7" class="empty-row">No analysis history yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</main>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+        <button class="modal-close" aria-label="Close">&times;</button>
+        <div id="modalContent"></div>
+    </div>
+</div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
