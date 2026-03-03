@@ -1,9 +1,3 @@
-databases:
-  - name: stocktips-db
-    plan: free
-    databaseName: stocktips
-    user: stocktips
-
 services:
   - type: web
     name: stocktips
@@ -13,9 +7,7 @@ services:
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: stocktips-db
-          property: connectionURI
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: TELEGRAM_BOT_TOKEN
