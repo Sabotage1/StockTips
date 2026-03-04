@@ -192,10 +192,10 @@ def run_telegram_bot():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-async def start_telegram_bot_async():
+async def start_telegram_bot_async(skip_webhook_set=False):
     """Start the Telegram bot in async mode (non-blocking, for use with FastAPI).
 
-    On Vercel (EXTERNAL_URL set): configures webhook mode.
+    On Vercel (EXTERNAL_URL set): webhook mode (webhook set externally or via /setup-webhook).
     Locally: falls back to polling mode.
     """
     if not TELEGRAM_BOT_TOKEN:
@@ -213,9 +213,12 @@ async def start_telegram_bot_async():
     await app.start()
 
     if EXTERNAL_URL:
-        webhook_url = "{}/webhook/telegram".format(EXTERNAL_URL)
-        await app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
-        logger.info("Telegram bot started (webhook mode): {}".format(webhook_url))
+        if not skip_webhook_set:
+            webhook_url = "{}/webhook/telegram".format(EXTERNAL_URL)
+            await app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
+            logger.info("Telegram bot started (webhook mode): {}".format(webhook_url))
+        else:
+            logger.info("Telegram bot initialized (serverless webhook mode).")
     else:
         await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
         logger.info("Telegram bot started (polling mode)!")

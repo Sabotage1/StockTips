@@ -40,7 +40,8 @@ async def get_telegram_app():
     global telegram_app
     if telegram_app is None:
         try:
-            telegram_app = await start_telegram_bot_async()
+            # In serverless, skip setting webhook on every cold start
+            telegram_app = await start_telegram_bot_async(skip_webhook_set=IS_SERVERLESS)
         except Exception as e:
             logger.error("Failed to start Telegram bot: {}".format(e))
     return telegram_app
@@ -82,6 +83,19 @@ async def telegram_webhook(request: Request):
     update = Update.de_json(data, tg_app.bot)
     await tg_app.process_update(update)
     return JSONResponse({"ok": True})
+
+
+@app.get("/setup-webhook")
+async def setup_webhook():
+    """Set the Telegram webhook to this server's URL. Call once after deploy."""
+    if not EXTERNAL_URL:
+        return JSONResponse({"error": "EXTERNAL_URL not set"}, status_code=400)
+    tg_app = await get_telegram_app()
+    if tg_app is None:
+        return JSONResponse({"error": "Bot not initialized"}, status_code=503)
+    webhook_url = "{}/webhook/telegram".format(EXTERNAL_URL)
+    await tg_app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
+    return JSONResponse({"ok": True, "webhook_url": webhook_url})
 
 
 @app.get("/", response_class=HTMLResponse)
