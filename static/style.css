@@ -364,6 +364,26 @@ body {
 }
 .source-badge.telegram { background: rgba(124,108,240,0.1); color: var(--accent2); }
 
+/* === Delete / Clear buttons === */
+.btn-delete-row {
+    background: none; border: none;
+    color: var(--text3); font-size: 18px; line-height: 1;
+    cursor: pointer; padding: 4px 8px; border-radius: 6px;
+    transition: all 0.15s;
+}
+.btn-delete-row:hover { color: var(--red); background: var(--red-bg); }
+
+.btn-clear-all {
+    padding: 10px 18px;
+    background: var(--red-bg); border: 1px solid rgba(248,113,113,0.25);
+    border-radius: var(--radius-sm);
+    color: var(--red); font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: all 0.2s;
+    margin-left: auto;
+}
+.btn-clear-all:hover { background: rgba(248,113,113,0.2); border-color: var(--red); }
+
 /* === Modal === */
 .modal-overlay {
     display: none; position: fixed; inset: 0;

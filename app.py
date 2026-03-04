@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from telegram import Update
 
 from config import HOST, PORT, EXTERNAL_URL
-from database import init_db, save_analysis, get_history, get_analysis_by_id, get_unique_tickers
+from database import init_db, save_analysis, get_history, get_analysis_by_id, get_unique_tickers, delete_analysis, delete_all_history
 from stock_analyzer import analyze_stock
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
@@ -232,6 +232,24 @@ async def api_chart(ticker: str):
     except Exception as e:
         logger.error("Chart error for {}: {}".format(ticker, e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/analysis/{analysis_id}")
+async def api_delete_analysis(analysis_id: int):
+    """Delete a single analysis record."""
+    ensure_db()
+    deleted = delete_analysis(analysis_id)
+    if not deleted:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse({"ok": True, "deleted_id": analysis_id})
+
+
+@app.delete("/api/history")
+async def api_delete_history(ticker: str = ""):
+    """Delete all history, optionally filtered by ticker."""
+    ensure_db()
+    count = delete_all_history(ticker=ticker or None)
+    return JSONResponse({"ok": True, "deleted_count": count})
 
 
 @app.get("/api/tickers")

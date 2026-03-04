@@ -130,6 +130,35 @@ def get_recent_analysis(ticker: str, max_age_minutes: int = 60) -> Optional[Tick
         db.close()
 
 
+def delete_analysis(analysis_id: int) -> bool:
+    """Delete a single analysis record by ID. Returns True if deleted."""
+    db = SessionLocal()
+    try:
+        record = db.query(TickerAnalysis).filter(TickerAnalysis.id == analysis_id).first()
+        if not record:
+            return False
+        db.delete(record)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def delete_all_history(ticker: Optional[str] = None) -> int:
+    """Delete all history (or filtered by ticker). Returns count deleted."""
+    db = SessionLocal()
+    try:
+        query = db.query(TickerAnalysis)
+        if ticker:
+            query = query.filter(TickerAnalysis.ticker == ticker.upper())
+        count = query.count()
+        query.delete(synchronize_session=False)
+        db.commit()
+        return count
+    finally:
+        db.close()
+
+
 def get_unique_tickers() -> List[str]:
     db = SessionLocal()
     try:

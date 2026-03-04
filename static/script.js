@@ -174,7 +174,7 @@ async function loadHistory() {
         document.getElementById('statHolds').textContent = records.filter(r => r.recommendation === 'HOLD').length;
 
         if (!records.length) {
-            historyBody.innerHTML = '<tr><td colspan="7" class="empty-row">No analysis history yet</td></tr>';
+            historyBody.innerHTML = '<tr><td colspan="8" class="empty-row">No analysis history yet</td></tr>';
             return;
         }
 
@@ -191,6 +191,7 @@ async function loadHistory() {
                 <td>${r.confidence}</td>
                 <td><span class="source-badge ${src}">${r.source}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
+                <td><button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button></td>
             </tr>`;
         }).join('');
     } catch (err) { console.error('History error:', err); }
@@ -240,6 +241,26 @@ async function showDetail(id) {
 // Modal
 document.querySelector('.modal-close').addEventListener('click', () => modalOverlay.classList.remove('active'));
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('active'); });
+
+// Delete single analysis
+async function deleteAnalysis(id) {
+    if (!confirm('Delete this analysis?')) return;
+    try {
+        const resp = await fetch(`${API}/api/analysis/${id}`, { method: 'DELETE' });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Delete failed'); }
+        loadHistory();
+    } catch (err) { alert(`Error: ${err.message}`); }
+}
+
+// Clear all history
+async function clearAllHistory() {
+    if (!confirm('Delete ALL history? This cannot be undone.')) return;
+    try {
+        const resp = await fetch(`${API}/api/history`, { method: 'DELETE' });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Delete failed'); }
+        loadHistory();
+    } catch (err) { alert(`Error: ${err.message}`); }
+}
 
 // Filters
 filterTicker.addEventListener('input', debounce(loadHistory, 500));

@@ -109,6 +109,7 @@
                 <option value="web">Web</option>
                 <option value="telegram">Telegram</option>
             </select>
+            <button class="btn-clear-all" id="clearAllBtn" onclick="clearAllHistory()">Clear All</button>
         </div>
 
         <div class="table-wrap">
@@ -122,10 +123,11 @@
                         <th>Confidence</th>
                         <th>Source</th>
                         <th>Date</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="historyBody">
-                    <tr><td colspan="7" class="empty-row">No analysis history yet</td></tr>
+                    <tr><td colspan="8" class="empty-row">No analysis history yet</td></tr>
                 </tbody>
             </table>
         </div>
