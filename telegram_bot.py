@@ -6,7 +6,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-from config import TELEGRAM_BOT_TOKEN, RENDER_EXTERNAL_URL
+from config import TELEGRAM_BOT_TOKEN, EXTERNAL_URL
 from stock_analyzer import analyze_stock
 from database import save_analysis
 from chart_generator import generate_chart
@@ -195,7 +195,7 @@ def run_telegram_bot():
 async def start_telegram_bot_async():
     """Start the Telegram bot in async mode (non-blocking, for use with FastAPI).
 
-    On Render (RENDER_EXTERNAL_URL set): configures webhook mode.
+    On Vercel (EXTERNAL_URL set): configures webhook mode.
     Locally: falls back to polling mode.
     """
     if not TELEGRAM_BOT_TOKEN:
@@ -212,8 +212,8 @@ async def start_telegram_bot_async():
     await app.initialize()
     await app.start()
 
-    if RENDER_EXTERNAL_URL:
-        webhook_url = "{}/webhook/telegram".format(RENDER_EXTERNAL_URL)
+    if EXTERNAL_URL:
+        webhook_url = "{}/webhook/telegram".format(EXTERNAL_URL)
         await app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
         logger.info("Telegram bot started (webhook mode): {}".format(webhook_url))
     else:

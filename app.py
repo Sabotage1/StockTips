@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from telegram import Update
 
-from config import HOST, PORT, RENDER_EXTERNAL_URL
+from config import HOST, PORT, EXTERNAL_URL
 from database import init_db, save_analysis, get_history, get_analysis_by_id, get_unique_tickers
 from stock_analyzer import analyze_stock
 from chart_generator import generate_chart
@@ -55,7 +55,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
-    """Receive Telegram updates via webhook (used on Render)."""
+    """Receive Telegram updates via webhook."""
     if telegram_app is None:
         return JSONResponse({"error": "Bot not initialized"}, status_code=503)
     data = await request.json()
