@@ -1,4 +1,5 @@
 import json
+import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -19,48 +20,67 @@ from telegram_bot import start_telegram_bot_async
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+IS_SERVERLESS = bool(os.getenv("VERCEL"))
+
 telegram_app = None
+_db_initialized = False
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup and shutdown logic."""
+def ensure_db():
+    global _db_initialized
+    if not _db_initialized:
+        init_db()
+        logger.info("Database initialized.")
+        _db_initialized = True
+
+
+async def get_telegram_app():
+    """Lazy-init the Telegram bot application."""
     global telegram_app
-    init_db()
-    logger.info("Database initialized.")
-
-    # Start Telegram bot in background
-    try:
-        telegram_app = await start_telegram_bot_async()
-    except Exception as e:
-        logger.error(f"Failed to start Telegram bot: {e}")
-
-    yield
-
-    # Shutdown
-    if telegram_app:
+    if telegram_app is None:
         try:
-            if telegram_app.updater and telegram_app.updater.running:
-                await telegram_app.updater.stop()
-            await telegram_app.stop()
-            await telegram_app.shutdown()
-        except Exception:
-            pass
+            telegram_app = await start_telegram_bot_async()
+        except Exception as e:
+            logger.error("Failed to start Telegram bot: {}".format(e))
+    return telegram_app
 
 
-app = FastAPI(title="StockTips AI", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+if IS_SERVERLESS:
+    # Serverless: no lifespan, lazy init everything
+    app = FastAPI(title="StockTips AI")
+else:
+    @asynccontextmanager
+    async def lifespan(the_app: FastAPI):
+        """Startup and shutdown logic for local/traditional hosting."""
+        ensure_db()
+        await get_telegram_app()
+        yield
+        if telegram_app:
+            try:
+                if telegram_app.updater and telegram_app.updater.running:
+                    await telegram_app.updater.stop()
+                await telegram_app.stop()
+                await telegram_app.shutdown()
+            except Exception:
+                pass
+
+    app = FastAPI(title="StockTips AI", lifespan=lifespan)
+
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
     """Receive Telegram updates via webhook."""
-    if telegram_app is None:
+    ensure_db()
+    tg_app = await get_telegram_app()
+    if tg_app is None:
         return JSONResponse({"error": "Bot not initialized"}, status_code=503)
     data = await request.json()
-    update = Update.de_json(data, telegram_app.bot)
-    await telegram_app.process_update(update)
+    update = Update.de_json(data, tg_app.bot)
+    await tg_app.process_update(update)
     return JSONResponse({"ok": True})
 
 
@@ -73,6 +93,7 @@ async def index(request: Request):
 @app.post("/api/analyze")
 async def api_analyze(request: Request):
     """Analyze a stock ticker via the API."""
+    ensure_db()
     body = await request.json()
     ticker = body.get("ticker", "").strip().upper()
 
@@ -127,6 +148,7 @@ async def api_analyze(request: Request):
 @app.get("/api/history")
 async def api_history(ticker: str = "", days: int = 30):
     """Get analysis history for the last N days."""
+    ensure_db()
     records = get_history(days=days, ticker=ticker or None)
     return JSONResponse([
         {
@@ -148,6 +170,7 @@ async def api_history(ticker: str = "", days: int = 30):
 @app.get("/api/analysis/{analysis_id}")
 async def api_analysis_detail(analysis_id: int):
     """Get detailed analysis by ID."""
+    ensure_db()
     record = get_analysis_by_id(analysis_id)
     if not record:
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -200,6 +223,7 @@ async def api_chart(ticker: str):
 @app.get("/api/tickers")
 async def api_tickers():
     """Get all unique tickers that have been analyzed."""
+    ensure_db()
     return JSONResponse(get_unique_tickers())
 
 
