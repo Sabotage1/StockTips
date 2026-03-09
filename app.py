@@ -289,6 +289,7 @@ async def api_history(ticker: str = "", days: int = 30):
             "short_summary": r.short_summary,
             "source": r.source,
             "telegram_user": r.telegram_user,
+            "share_token": getattr(r, "share_token", "") or "",
             "created_at": r.created_at.isoformat() if r.created_at else "",
         }
         for r in records

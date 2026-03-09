@@ -297,7 +297,10 @@ async function loadHistory() {
                 <td>${r.confidence}</td>
                 <td><span class="source-badge ${src}">${r.source}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
-                <td><button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button></td>
+                <td style="display:flex;gap:6px;align-items:center">
+                    ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${r.share_token}', this)">Share</button>` : ''}
+                    <button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>
+                </td>
             </tr>`;
         }).join('');
     } catch (err) { console.error('History error:', err); }

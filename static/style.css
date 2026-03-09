@@ -551,6 +551,7 @@ body {
     transition: all 0.2s;
 }
 .btn-share:hover { background: rgba(124,108,240,0.18); border-color: var(--accent); }
+.btn-share-sm { padding: 3px 10px; font-size: 10px; }
 
 /* === Share Page === */
 .share-page {
