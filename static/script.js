@@ -79,11 +79,11 @@ function copyShareLink(token, btn) {
 
 function renderResult(data) {
     const rec = data.recommendation;
-    const recClass = rec === 'BUY' ? 'badge-buy' : rec === 'SELL' ? 'badge-sell' : 'badge-hold';
+    const recClass = rec.startsWith('BUY') ? 'badge-buy' : rec.startsWith('SELL') ? 'badge-sell' : 'badge-hold';
     const confClass = data.confidence === 'HIGH' ? 'badge-high' : data.confidence === 'MEDIUM' ? 'badge-medium' : 'badge-low';
     const riskClass = data.risk_level === 'LOW' ? 'badge-high' : data.risk_level === 'HIGH' ? 'badge-low' : 'badge-medium';
     const priceStr = data.current_price ? `$${data.current_price.toFixed(2)}` : 'N/A';
-    const priceColor = rec === 'BUY' ? 'var(--green)' : rec === 'SELL' ? 'var(--red)' : 'var(--yellow)';
+    const priceColor = rec.startsWith('BUY') ? 'var(--green)' : rec.startsWith('SELL') ? 'var(--red)' : 'var(--yellow)';
 
     // Factors
     let factorsHtml = '';
@@ -275,8 +275,8 @@ async function loadHistory() {
         if (source) records = records.filter(r => r.source === source);
 
         document.getElementById('statTotal').textContent = records.length;
-        document.getElementById('statBuys').textContent = records.filter(r => r.recommendation === 'BUY').length;
-        document.getElementById('statSells').textContent = records.filter(r => r.recommendation === 'SELL').length;
+        document.getElementById('statBuys').textContent = records.filter(r => r.recommendation.startsWith('BUY')).length;
+        document.getElementById('statSells').textContent = records.filter(r => r.recommendation.startsWith('SELL')).length;
         document.getElementById('statHolds').textContent = records.filter(r => r.recommendation === 'HOLD').length;
 
         if (!records.length) {
@@ -285,7 +285,7 @@ async function loadHistory() {
         }
 
         historyBody.innerHTML = records.map(r => {
-            const cls = r.recommendation === 'BUY' ? 'badge-buy' : r.recommendation === 'SELL' ? 'badge-sell' : 'badge-hold';
+            const cls = r.recommendation.startsWith('BUY') ? 'badge-buy' : r.recommendation.startsWith('SELL') ? 'badge-sell' : 'badge-hold';
             const src = r.source === 'telegram' ? 'telegram' : '';
             const d = r.created_at ? new Date(r.created_at).toLocaleString() : '';
             const p = r.current_price ? `$${r.current_price.toFixed(2)}` : 'N/A';
@@ -310,7 +310,7 @@ async function showDetail(id) {
     try {
         const resp = await fetch(`${API}/api/analysis/${id}`);
         const data = await resp.json();
-        const cls = data.recommendation === 'BUY' ? 'badge-buy' : data.recommendation === 'SELL' ? 'badge-sell' : 'badge-hold';
+        const cls = data.recommendation.startsWith('BUY') ? 'badge-buy' : data.recommendation.startsWith('SELL') ? 'badge-sell' : 'badge-hold';
         const price = data.current_price ? `$${data.current_price.toFixed(2)}` : 'N/A';
         const date = data.created_at ? new Date(data.created_at).toLocaleString() : '';
 

@@ -23,7 +23,12 @@ def format_telegram_message(result: dict) -> str:
     ticker = result["ticker"]
     price = result.get("current_price")
 
-    rec_label = {"BUY": "[+] BUY", "SELL": "[-] SELL", "HOLD": "[=] HOLD"}.get(rec, rec)
+    if rec.startswith("BUY"):
+        rec_label = "[+] " + rec
+    elif rec.startswith("SELL"):
+        rec_label = "[-] " + rec
+    else:
+        rec_label = "[=] " + rec
     conf_label = {"HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}.get(conf, conf)
 
     price_str = "${:.2f}".format(price) if price else "N/A"

@@ -52,11 +52,11 @@
 
     function renderResult(data) {
         var rec = data.recommendation;
-        var recClass = rec === 'BUY' ? 'badge-buy' : rec === 'SELL' ? 'badge-sell' : 'badge-hold';
+        var recClass = rec.indexOf('BUY') === 0 ? 'badge-buy' : rec.indexOf('SELL') === 0 ? 'badge-sell' : 'badge-hold';
         var confClass = data.confidence === 'HIGH' ? 'badge-high' : data.confidence === 'MEDIUM' ? 'badge-medium' : 'badge-low';
         var riskClass = data.risk_level === 'LOW' ? 'badge-high' : data.risk_level === 'HIGH' ? 'badge-low' : 'badge-medium';
         var priceStr = data.current_price ? '$' + data.current_price.toFixed(2) : 'N/A';
-        var priceColor = rec === 'BUY' ? 'var(--green)' : rec === 'SELL' ? 'var(--red)' : 'var(--yellow)';
+        var priceColor = rec.indexOf('BUY') === 0 ? 'var(--green)' : rec.indexOf('SELL') === 0 ? 'var(--red)' : 'var(--yellow)';
 
         // Factors
         var factorsHtml = '';

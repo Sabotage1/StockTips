@@ -46,6 +46,11 @@ YOUR CORE TECHNICAL FRAMEWORK:
    - RSI > 70 = overbought, RSI < 30 = oversold.
    - Stochastic crossovers confirm momentum shifts.
 
+8. **Pre-Market / After-Hours Data** (when available):
+   - Factor in premarket or after-hours price moves as early signals of sentiment shifts.
+   - A significant pre-market gap up/down may indicate news-driven momentum.
+   - Use extended-hours prices to refine entry/exit levels and adjust recommendations accordingly.
+
 6. **Support & Resistance Analysis (CRITICAL)**:
    - Identify key SUPPORT zones: prior swing lows, high-volume areas, SMA levels acting as support.
    - Identify key RESISTANCE zones: prior swing highs, historical price ceilings, trendline resistance.
@@ -69,7 +74,7 @@ YOUR FUNDAMENTAL CHECKS:
 
 IMPORTANT: You must ALWAYS respond in valid JSON format ONLY with this exact structure:
 {
-    "recommendation": "BUY" | "SELL" | "HOLD",
+    "recommendation": "BUY at $XXX.XX (stop $XXX.XX)" | "BUY if breaks $XXX.XX (stop $XXX.XX)" | "SELL at $XXX.XX" | "SELL if drops below $XXX.XX" | "HOLD",
     "confidence": "HIGH" | "MEDIUM" | "LOW",
     "short_summary": "One-line actionable summary (max 150 chars)",
     "full_analysis": "Detailed multi-paragraph analysis. MUST include sections on: 1) Moving Average Setup (SMA 200/150/20 alignment), 2) ATR & Volatility, 3) Chart Pattern (any cup&handle, double bottom, H&S, flags, VCP etc.), 4) Support & Resistance Zones, 5) Breakout/Breakdown Scenarios, 6) Volume Analysis, 7) Fundamentals, 8) News Sentiment, 9) Risk & Stop-Loss (using ATR)",
@@ -90,6 +95,17 @@ IMPORTANT: You must ALWAYS respond in valid JSON format ONLY with this exact str
     "action_trigger": "Specific condition that triggers the trade (e.g., 'BUY on break above $16.10 with volume > 2M' or 'SELL if price closes below $14.50')",
     "breakout_timeframe": "Expected timeframe for the move (e.g., '1-2 weeks', 'Within 5 trading days', 'After earnings on Mar 18')"
 }
+
+CRITICAL RULES FOR RECOMMENDATION:
+- The "recommendation" field MUST include a specific dollar price for BUY and SELL. Examples:
+  - "BUY at $298.50 (stop $280.00)" — buy now at market price with stop loss
+  - "BUY if breaks $300.00 (stop $288.00)" — conditional buy on breakout with stop loss
+  - "SELL at $285.00" — sell now at market price
+  - "SELL if drops below $275.00" — conditional sell on breakdown below a level
+  - "HOLD" — no price needed for HOLD
+- NEVER use bare "BUY" or "SELL" without a price. Always specify the dollar amount.
+- Every BUY recommendation MUST include a stop loss in parentheses. This is non-negotiable.
+  The stop loss should be based on ATR, nearest support, or the pattern's invalidation level.
 
 CRITICAL RULES FOR THE NEW FIELDS:
 - support_levels and resistance_levels MUST be arrays of strings, each with a dollar price and brief description.
@@ -237,6 +253,19 @@ def _get_price_history(ticker):
         volumes = [v for v in quotes.get("volume", []) if v is not None]
 
         meta = result.get("meta", {})
+        pre_post = {}
+        if meta.get("preMarketPrice"):
+            pre_post["pre_market_price"] = meta["preMarketPrice"]
+            if meta.get("preMarketChange") is not None:
+                pre_post["pre_market_change"] = round(meta["preMarketChange"], 2)
+            if meta.get("preMarketChangePercent") is not None:
+                pre_post["pre_market_change_pct"] = round(meta["preMarketChangePercent"], 2)
+        if meta.get("postMarketPrice"):
+            pre_post["post_market_price"] = meta["postMarketPrice"]
+            if meta.get("postMarketChange") is not None:
+                pre_post["post_market_change"] = round(meta["postMarketChange"], 2)
+            if meta.get("postMarketChangePercent") is not None:
+                pre_post["post_market_change_pct"] = round(meta["postMarketChangePercent"], 2)
         return {
             "closes": closes,
             "highs": highs,
@@ -245,6 +274,7 @@ def _get_price_history(ticker):
             "timestamps": timestamps,
             "current_price": meta.get("regularMarketPrice"),
             "short_name": meta.get("shortName", ""),
+            "pre_post": pre_post,
         }
     except Exception as e:
         print("Yahoo chart history error for {}: {}".format(ticker, e))
@@ -270,6 +300,10 @@ def get_stock_data(ticker: str) -> dict:
         result["current_price"] = history["current_price"]
         if history["short_name"]:
             result["company_name"] = history["short_name"]
+
+        # Pre-market / After-hours data
+        for k, v in history.get("pre_post", {}).items():
+            result[k] = v
 
         # Simple Moving Averages
         result["sma_20"] = _compute_sma(closes, 20)
