@@ -19,7 +19,7 @@ class TickerAnalysis(Base):
     ticker = Column(String(20), index=True, nullable=False)
     company_name = Column(String(200), default="")
     current_price = Column(Float, nullable=True)
-    recommendation = Column(String(20), default="")  # BUY, SELL, HOLD
+    recommendation = Column(String(200), default="")  # e.g. "BUY at $298.50 (stop $280.00)"
     confidence = Column(String(20), default="")  # HIGH, MEDIUM, LOW
     short_summary = Column(Text, default="")
     full_analysis = Column(Text, default="")
@@ -75,6 +75,12 @@ def _migrate_add_columns():
                 db.commit()
             except Exception:
                 db.rollback()  # Column already exists
+        # Widen recommendation column for longer values like "BUY at $298.50 (stop $280.00)"
+        try:
+            db.execute(text("ALTER TABLE ticker_analyses ALTER COLUMN recommendation TYPE VARCHAR(200)"))
+            db.commit()
+        except Exception:
+            db.rollback()  # SQLite ignores column type changes; Postgres may already be correct
         # Backfill share_token for existing rows that don't have one
         try:
             rows = db.execute(text("SELECT id FROM ticker_analyses WHERE share_token IS NULL")).fetchall()
