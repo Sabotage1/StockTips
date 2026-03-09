@@ -296,6 +296,26 @@ async function showDetail(id) {
             ).join('') + '</ul>';
         }
 
+        // Build user info section
+        let userInfoHtml = '';
+        const hasUserInfo = data.telegram_user || data.telegram_user_id || data.user_ip;
+        if (hasUserInfo) {
+            let rows = '';
+            if (data.source === 'telegram') {
+                if (data.telegram_user) rows += `<div class="user-info-row"><span class="user-info-label">Username</span><span class="user-info-val">${data.telegram_user}</span></div>`;
+                if (data.telegram_user_id) rows += `<div class="user-info-row"><span class="user-info-label">Telegram ID</span><span class="user-info-val">${data.telegram_user_id}</span></div>`;
+            }
+            if (data.user_ip) rows += `<div class="user-info-row"><span class="user-info-label">IP Address</span><span class="user-info-val">${data.user_ip}</span></div>`;
+            rows += `<div class="user-info-row"><span class="user-info-label">Source</span><span class="user-info-val"><span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span></span></div>`;
+
+            userInfoHtml = `
+                <div class="user-info-card">
+                    <div class="card-title">User Info</div>
+                    ${rows}
+                </div>
+            `;
+        }
+
         modalContent.innerHTML = `
             <div style="margin-bottom:20px">
                 <span class="result-ticker">${data.ticker}</span>
@@ -308,6 +328,7 @@ async function showDetail(id) {
                 <span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span>
             </div>
             <p style="color:var(--text3);font-size:12px;margin-bottom:16px">${date}${data.telegram_user ? ' &mdash; ' + data.telegram_user : ''}</p>
+            ${userInfoHtml}
             <div class="result-summary">${data.short_summary}</div>
             <div class="chart-card" style="margin-top:16px">
                 <img src="${API}/api/chart/${data.ticker}" alt="Chart" onerror="this.parentElement.style.display='none'" />

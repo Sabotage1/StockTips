@@ -27,6 +27,8 @@ class TickerAnalysis(Base):
     analysis_json = Column(Text, default="")  # Full AI analysis JSON (all fields)
     source = Column(String(50), default="web")  # web, telegram
     telegram_user = Column(String(200), default="")
+    telegram_user_id = Column(String(50), default="")  # Telegram numeric user ID
+    user_ip = Column(String(100), default="")  # Client IP address
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -41,6 +43,27 @@ class WatchlistItem(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Migrate: add new columns to existing tables (safe for SQLite)
+    _migrate_add_columns()
+
+
+def _migrate_add_columns():
+    """Add new columns to existing tables if they don't exist."""
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        migrations = [
+            ("ticker_analyses", "telegram_user_id", "VARCHAR(50) DEFAULT ''"),
+            ("ticker_analyses", "user_ip", "VARCHAR(100) DEFAULT ''"),
+        ]
+        for table, col, col_type in migrations:
+            try:
+                db.execute(text("ALTER TABLE {} ADD COLUMN {} {}".format(table, col, col_type)))
+                db.commit()
+            except Exception:
+                db.rollback()  # Column already exists
+    finally:
+        db.close()
 
 
 def get_db():
@@ -63,6 +86,8 @@ def save_analysis(
     stock_data: str,
     source: str = "web",
     telegram_user: str = "",
+    telegram_user_id: str = "",
+    user_ip: str = "",
     analysis_json: str = "",
 ) -> TickerAnalysis:
     db = SessionLocal()
@@ -80,6 +105,8 @@ def save_analysis(
             analysis_json=analysis_json,
             source=source,
             telegram_user=telegram_user,
+            telegram_user_id=telegram_user_id,
+            user_ip=user_ip,
         )
         db.add(record)
         db.commit()

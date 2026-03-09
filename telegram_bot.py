@@ -174,6 +174,7 @@ async def process_ticker(update: Update, ticker: str):
         telegram_user = "{} {}".format(user.first_name or "", user.last_name or "").strip()
         if user.username:
             telegram_user += " (@{})".format(user.username)
+        telegram_user_id = str(user.id) if user.id else ""
 
         save_analysis(
             ticker=result["ticker"],
@@ -188,6 +189,7 @@ async def process_ticker(update: Update, ticker: str):
             analysis_json=json.dumps(analysis, default=str),
             source="telegram",
             telegram_user=telegram_user,
+            telegram_user_id=telegram_user_id,
         )
 
         # Send formatted response

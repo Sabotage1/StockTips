@@ -118,6 +118,13 @@ async def api_analyze(request: Request):
         result = await analyze_stock(ticker)
         analysis = result["analysis"]
 
+        # Capture client IP
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if not client_ip:
+            client_ip = request.headers.get("x-real-ip", "")
+        if not client_ip and request.client:
+            client_ip = request.client.host or ""
+
         # Always save to history (even cached results) so every search is recorded
         record = save_analysis(
             ticker=result["ticker"],
@@ -131,6 +138,7 @@ async def api_analyze(request: Request):
             stock_data=json.dumps(result["stock_data"], default=str),
             analysis_json=json.dumps(analysis, default=str),
             source="web",
+            user_ip=client_ip,
         )
 
         return JSONResponse({
@@ -223,6 +231,8 @@ async def api_analysis_detail(analysis_id: int):
         "stock_data": stock_data,
         "source": record.source,
         "telegram_user": record.telegram_user,
+        "telegram_user_id": getattr(record, "telegram_user_id", "") or "",
+        "user_ip": getattr(record, "user_ip", "") or "",
         "created_at": record.created_at.isoformat() if record.created_at else "",
     })
 
