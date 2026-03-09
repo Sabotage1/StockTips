@@ -43,6 +43,7 @@
         })
         .then(function(data) {
             loadingEl.style.display = 'none';
+            document.title = data.ticker + ' Shared Analysis | StockTips AI';
             renderResult(data);
         })
         .catch(function(err) {

@@ -577,5 +577,16 @@ body {
     .stats-bar { grid-template-columns: repeat(2, 1fr); }
     .cards-grid { grid-template-columns: 1fr; }
     .result-top { flex-direction: column; }
+    .result-ticker { font-size: 24px; }
+    .result-price { font-size: 22px; }
     .metric-grid { grid-template-columns: 1fr; }
+    .setup-grid { grid-template-columns: 1fr; }
+    .breakout-box { grid-template-columns: 1fr 1fr; }
+    .share-page { padding: 16px 12px; }
+    .share-page .result-hero { padding: 18px; }
+    .share-page .trading-setup { padding: 16px; }
+    .share-page .cards-grid { grid-template-columns: 1fr; }
+    .share-page .chart-card { padding: 12px; }
+    .share-page .analysis-card { padding: 16px; }
+    .share-page .news-card { padding: 16px; }
 }
