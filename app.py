@@ -15,7 +15,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from telegram import Update
 
 from config import HOST, PORT, EXTERNAL_URL, AUTH_USERNAME, AUTH_PASSWORD_HASH, AUTH_SECRET_KEY
-from database import init_db, save_analysis, get_history, get_analysis_by_id, get_unique_tickers, delete_analysis, delete_all_history, block_user, unblock_user, is_user_blocked, get_blocked_users
+from database import init_db, save_analysis, get_history, get_analysis_by_id, get_analysis_by_share_token, get_unique_tickers, delete_analysis, delete_all_history, block_user, unblock_user, is_user_blocked, get_blocked_users
 from stock_analyzer import analyze_stock
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
@@ -122,8 +122,10 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 async def auth_middleware(request: Request, call_next):
     """Require authentication for all routes except public ones."""
     path = request.url.path
-    # Allow public paths, static files, and favicon
-    if path in PUBLIC_PATHS or path.startswith("/static") or path == "/favicon.ico":
+    # Allow public paths, static files, favicon, share pages, and chart API
+    if path in PUBLIC_PATHS or path.startswith("/static") or path == "/favicon.ico" \
+            or path.startswith("/share/") or path.startswith("/api/share/") \
+            or path.startswith("/api/chart/"):
         return await call_next(request)
     if not _is_authenticated(request):
         # API calls get 401, browser requests get redirected to login
@@ -237,6 +239,7 @@ async def api_analyze(request: Request):
 
         return JSONResponse({
             "id": record.id,
+            "share_token": record.share_token,
             "ticker": result["ticker"],
             "company_name": result["company_name"],
             "current_price": result.get("current_price"),
@@ -317,6 +320,7 @@ async def api_analysis_detail(analysis_id: int):
 
     return JSONResponse({
         "id": record.id,
+        "share_token": getattr(record, "share_token", "") or "",
         "ticker": record.ticker,
         "company_name": record.company_name,
         "current_price": record.current_price,
@@ -360,6 +364,74 @@ async def api_chart(ticker: str):
     except Exception as e:
         logger.error("Chart error for {}: {}".format(ticker, e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/share/{token}")
+async def share_page(request: Request, token: str):
+    """Serve the public share page for a given share token."""
+    ensure_db()
+    record = get_analysis_by_share_token(token)
+    if not record:
+        return HTMLResponse("<h1>404 - Analysis not found</h1><p>This share link is invalid or has expired.</p>", status_code=404)
+    return templates.TemplateResponse("share.html", {"request": request, "token": token})
+
+
+@app.get("/api/share/{token}")
+async def api_share_detail(token: str):
+    """Public API: return analysis data for a share token (no sensitive fields)."""
+    ensure_db()
+    record = get_analysis_by_share_token(token)
+    if not record:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    news_data = []
+    try:
+        news_data = json.loads(record.news_data) if record.news_data else []
+    except json.JSONDecodeError:
+        pass
+
+    stock_data = {}
+    try:
+        stock_data = json.loads(record.stock_data) if record.stock_data else {}
+    except json.JSONDecodeError:
+        pass
+
+    analysis_extra = {}
+    try:
+        analysis_extra = json.loads(record.analysis_json) if record.analysis_json else {}
+    except json.JSONDecodeError:
+        pass
+
+    return JSONResponse({
+        "ticker": record.ticker,
+        "company_name": record.company_name,
+        "current_price": record.current_price,
+        "recommendation": record.recommendation,
+        "confidence": record.confidence,
+        "short_summary": record.short_summary,
+        "full_analysis": record.full_analysis,
+        "news_data": news_data,
+        "stock_data": stock_data,
+        "key_factors": analysis_extra.get("key_factors", []),
+        "risk_level": analysis_extra.get("risk_level", ""),
+        "price_target_short": analysis_extra.get("price_target_short", ""),
+        "price_target_long": analysis_extra.get("price_target_long", ""),
+        "stop_loss": analysis_extra.get("stop_loss", ""),
+        "chart_pattern": analysis_extra.get("chart_pattern", ""),
+        "trend_status": analysis_extra.get("trend_status", ""),
+        "support_levels": analysis_extra.get("support_levels", []),
+        "resistance_levels": analysis_extra.get("resistance_levels", []),
+        "breakout_level": analysis_extra.get("breakout_level", ""),
+        "breakout_direction": analysis_extra.get("breakout_direction", ""),
+        "expected_gain_pct": analysis_extra.get("expected_gain_pct", ""),
+        "expected_loss_pct": analysis_extra.get("expected_loss_pct", ""),
+        "risk_reward_ratio": analysis_extra.get("risk_reward_ratio", ""),
+        "action_trigger": analysis_extra.get("action_trigger", ""),
+        "breakout_timeframe": analysis_extra.get("breakout_timeframe", ""),
+        "news_count": len(news_data),
+        "news_articles": news_data[:10],
+        "created_at": record.created_at.isoformat() if record.created_at else "",
+    })
 
 
 @app.delete("/api/analysis/{analysis_id}")

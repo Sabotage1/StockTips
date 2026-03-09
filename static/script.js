@@ -56,6 +56,27 @@ async function analyze() {
     }
 }
 
+function copyShareLink(token, btn) {
+    const url = window.location.origin + '/share/' + token;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function() {
+            btn.textContent = 'Link copied!';
+            setTimeout(function() { btn.textContent = 'Share'; }, 2000);
+        });
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = 'Link copied!';
+        setTimeout(function() { btn.textContent = 'Share'; }, 2000);
+    }
+}
+
 function renderResult(data) {
     const rec = data.recommendation;
     const recClass = rec === 'BUY' ? 'badge-buy' : rec === 'SELL' ? 'badge-sell' : 'badge-hold';
@@ -197,6 +218,7 @@ function renderResult(data) {
                 <span class="badge ${confClass}">${data.confidence} confidence</span>
                 <span class="badge ${riskClass}">${data.risk_level || 'N/A'} risk</span>
                 ${data.trend_status ? `<span class="badge badge-info">${data.trend_status}</span>` : ''}
+                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)">Share</button>` : ''}
             </div>
             ${patternHtml}
             <div class="result-summary">${data.short_summary}</div>
@@ -342,6 +364,7 @@ async function showDetail(id) {
                 <span class="badge ${cls}">${data.recommendation}</span>
                 <span class="badge badge-info">${data.confidence}</span>
                 <span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span>
+                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)">Share</button>` : ''}
             </div>
             <p style="color:var(--text3);font-size:12px;margin-bottom:16px">${date}${data.telegram_user ? ' &mdash; ' + data.telegram_user : ''}</p>
             ${blockBtnHtml}

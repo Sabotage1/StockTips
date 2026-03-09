@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -29,6 +30,7 @@ class TickerAnalysis(Base):
     telegram_user = Column(String(200), default="")
     telegram_user_id = Column(String(50), default="")  # Telegram numeric user ID
     user_ip = Column(String(100), default="")  # Client IP address
+    share_token = Column(String(32), unique=True, index=True)  # Public share link token
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -65,6 +67,7 @@ def _migrate_add_columns():
         migrations = [
             ("ticker_analyses", "telegram_user_id", "VARCHAR(50) DEFAULT ''"),
             ("ticker_analyses", "user_ip", "VARCHAR(100) DEFAULT ''"),
+            ("ticker_analyses", "share_token", "VARCHAR(32)"),
         ]
         for table, col, col_type in migrations:
             try:
@@ -72,6 +75,16 @@ def _migrate_add_columns():
                 db.commit()
             except Exception:
                 db.rollback()  # Column already exists
+        # Backfill share_token for existing rows that don't have one
+        try:
+            rows = db.execute(text("SELECT id FROM ticker_analyses WHERE share_token IS NULL")).fetchall()
+            for row in rows:
+                db.execute(text("UPDATE ticker_analyses SET share_token = :token WHERE id = :id"),
+                           {"token": uuid.uuid4().hex, "id": row[0]})
+            if rows:
+                db.commit()
+        except Exception:
+            db.rollback()
     finally:
         db.close()
 
@@ -117,6 +130,7 @@ def save_analysis(
             telegram_user=telegram_user,
             telegram_user_id=telegram_user_id,
             user_ip=user_ip,
+            share_token=uuid.uuid4().hex,
         )
         db.add(record)
         db.commit()
@@ -147,6 +161,15 @@ def get_analysis_by_id(analysis_id: int) -> Optional[TickerAnalysis]:
     db = SessionLocal()
     try:
         return db.query(TickerAnalysis).filter(TickerAnalysis.id == analysis_id).first()
+    finally:
+        db.close()
+
+
+def get_analysis_by_share_token(token: str) -> Optional[TickerAnalysis]:
+    """Look up an analysis by its public share token."""
+    db = SessionLocal()
+    try:
+        return db.query(TickerAnalysis).filter(TickerAnalysis.share_token == token).first()
     finally:
         db.close()
 
