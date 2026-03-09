@@ -545,12 +545,12 @@ body {
     padding: 5px 14px; border-radius: 8px;
     font-size: 12px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.5px;
-    background: rgba(124,108,240,0.08); color: var(--accent2);
-    border: 1px solid rgba(124,108,240,0.25);
+    background: rgba(245,158,11,0.12); color: #f59e0b;
+    border: 1px solid rgba(245,158,11,0.3);
     cursor: pointer; font-family: inherit;
     transition: all 0.2s;
 }
-.btn-share:hover { background: rgba(124,108,240,0.18); border-color: var(--accent); }
+.btn-share:hover { background: rgba(245,158,11,0.22); border-color: #f59e0b; }
 .btn-share-sm { padding: 3px 10px; font-size: 10px; }
 
 /* === Share Page === */

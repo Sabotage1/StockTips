@@ -60,8 +60,8 @@ function copyShareLink(token, btn) {
     const url = window.location.origin + '/share/' + token;
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(url).then(function() {
-            btn.textContent = 'Link copied!';
-            setTimeout(function() { btn.textContent = 'Share'; }, 2000);
+            btn.innerHTML = 'Link copied!';
+            setTimeout(function() { btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share'; }, 2000);
         });
     } else {
         var ta = document.createElement('textarea');
@@ -72,8 +72,8 @@ function copyShareLink(token, btn) {
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
-        btn.textContent = 'Link copied!';
-        setTimeout(function() { btn.textContent = 'Share'; }, 2000);
+        btn.innerHTML = 'Link copied!';
+        setTimeout(function() { btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share'; }, 2000);
     }
 }
 
@@ -218,7 +218,7 @@ function renderResult(data) {
                 <span class="badge ${confClass}">${data.confidence} confidence</span>
                 <span class="badge ${riskClass}">${data.risk_level || 'N/A'} risk</span>
                 ${data.trend_status ? `<span class="badge badge-info">${data.trend_status}</span>` : ''}
-                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)">Share</button>` : ''}
+                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
             </div>
             ${patternHtml}
             <div class="result-summary">${data.short_summary}</div>
@@ -298,7 +298,7 @@ async function loadHistory() {
                 <td><span class="source-badge ${src}">${r.source}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td style="display:flex;gap:6px;align-items:center">
-                    ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${r.share_token}', this)">Share</button>` : ''}
+                    ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${r.share_token}', this)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
                     <button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>
                 </td>
             </tr>`;
@@ -367,7 +367,7 @@ async function showDetail(id) {
                 <span class="badge ${cls}">${data.recommendation}</span>
                 <span class="badge badge-info">${data.confidence}</span>
                 <span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span>
-                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)">Share</button>` : ''}
+                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
             </div>
             <p style="color:var(--text3);font-size:12px;margin-bottom:16px">${date}${data.telegram_user ? ' &mdash; ' + data.telegram_user : ''}</p>
             ${blockBtnHtml}
