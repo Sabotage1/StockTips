@@ -101,6 +101,88 @@ function renderResult(data) {
     const patternHtml = data.chart_pattern && data.chart_pattern !== 'None detected' && data.chart_pattern !== 'N/A'
         ? `<div class="pattern-banner"><strong>Pattern Detected:</strong> ${data.chart_pattern}</div>` : '';
 
+    // Trading Setup - Support & Resistance
+    let supportHtml = '';
+    if (data.support_levels && data.support_levels.length) {
+        supportHtml = '<ul class="level-list">' + data.support_levels.map(s =>
+            `<li class="level-item"><span class="level-dot support"></span>${s}</li>`
+        ).join('') + '</ul>';
+    } else {
+        supportHtml = '<p style="color:var(--text3);font-size:13px">No key supports identified</p>';
+    }
+
+    let resistanceHtml = '';
+    if (data.resistance_levels && data.resistance_levels.length) {
+        resistanceHtml = '<ul class="level-list">' + data.resistance_levels.map(r =>
+            `<li class="level-item"><span class="level-dot resistance"></span>${r}</li>`
+        ).join('') + '</ul>';
+    } else {
+        resistanceHtml = '<p style="color:var(--text3);font-size:13px">No key resistances identified</p>';
+    }
+
+    const actionTrigger = data.action_trigger && data.action_trigger !== 'N/A' ? data.action_trigger : '';
+    const breakoutLevel = data.breakout_level && data.breakout_level !== 'N/A' ? data.breakout_level : '';
+    const breakoutDir = data.breakout_direction || '';
+    const expGain = data.expected_gain_pct && data.expected_gain_pct !== 'N/A' ? data.expected_gain_pct : '';
+    const expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? data.expected_loss_pct : '';
+    const rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? data.risk_reward_ratio : '';
+    const timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? data.breakout_timeframe : '';
+
+    const hasTradingSetup = actionTrigger || breakoutLevel || expGain || data.support_levels?.length || data.resistance_levels?.length;
+
+    const tradingSetupHtml = hasTradingSetup ? `
+        <div class="trading-setup">
+            <div class="card-title">Trading Setup</div>
+            ${actionTrigger ? `
+                <div class="action-trigger-box">
+                    <div class="action-trigger-label">Action Trigger</div>
+                    <div class="action-trigger-text">${actionTrigger}</div>
+                </div>
+            ` : ''}
+            <div class="setup-grid">
+                <div>
+                    <div class="setup-section-title">Support Levels</div>
+                    ${supportHtml}
+                </div>
+                <div>
+                    <div class="setup-section-title">Resistance Levels</div>
+                    ${resistanceHtml}
+                </div>
+            </div>
+            <div class="breakout-box">
+                ${breakoutLevel ? `
+                    <div class="breakout-item">
+                        <div class="breakout-item-label">Breakout Level</div>
+                        <div class="breakout-item-value ${breakoutDir === 'BULLISH' ? 'green' : breakoutDir === 'BEARISH' ? 'red' : 'blue'}">${breakoutLevel}</div>
+                    </div>
+                ` : ''}
+                ${expGain ? `
+                    <div class="breakout-item">
+                        <div class="breakout-item-label">Expected Gain</div>
+                        <div class="breakout-item-value green">+${expGain.replace('+','')}</div>
+                    </div>
+                ` : ''}
+                ${expLoss ? `
+                    <div class="breakout-item">
+                        <div class="breakout-item-label">Expected Loss</div>
+                        <div class="breakout-item-value red">-${expLoss.replace('-','')}</div>
+                    </div>
+                ` : ''}
+                ${rrRatio ? `
+                    <div class="breakout-item">
+                        <div class="breakout-item-label">Risk / Reward</div>
+                        <div class="breakout-item-value accent">${rrRatio}</div>
+                    </div>
+                ` : ''}
+            </div>
+            ${timeframe ? `
+                <div class="timeframe-row">
+                    Expected timeframe: <strong>${timeframe}</strong>
+                </div>
+            ` : ''}
+        </div>
+    ` : '';
+
     resultCard.innerHTML = `
         <div class="result-hero">
             <div class="result-top">
@@ -119,6 +201,8 @@ function renderResult(data) {
             ${patternHtml}
             <div class="result-summary">${data.short_summary}</div>
         </div>
+
+        ${tradingSetupHtml}
 
         <div class="cards-grid">
             <div class="card">

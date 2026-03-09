@@ -408,6 +408,94 @@ body {
 }
 .modal-close:hover { color: var(--text); }
 
+/* === Trading Setup Card === */
+.trading-setup {
+    margin-top: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+}
+
+.action-trigger-box {
+    background: rgba(124,108,240,0.06);
+    border: 1px solid rgba(124,108,240,0.2);
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+    margin-bottom: 20px;
+}
+.action-trigger-label {
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--accent2); margin-bottom: 6px;
+}
+.action-trigger-text {
+    font-size: 15px; font-weight: 600; color: var(--text);
+    line-height: 1.5;
+}
+
+.setup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.setup-section-title {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text2); margin-bottom: 10px;
+}
+
+.level-list { list-style: none; }
+.level-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0;
+    font-size: 13px; color: var(--text);
+    border-bottom: 1px solid var(--border);
+}
+.level-item:last-child { border-bottom: none; }
+.level-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0;
+}
+.level-dot.support { background: var(--green); }
+.level-dot.resistance { background: var(--red); }
+
+.breakout-box {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+}
+.breakout-item {
+    text-align: center;
+    padding: 14px 10px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+.breakout-item-label {
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text3); margin-bottom: 6px;
+}
+.breakout-item-value {
+    font-size: 16px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+}
+.breakout-item-value.green { color: var(--green); }
+.breakout-item-value.red { color: var(--red); }
+.breakout-item-value.blue { color: var(--blue); }
+.breakout-item-value.yellow { color: var(--yellow); }
+.breakout-item-value.accent { color: var(--accent2); }
+
+.timeframe-row {
+    margin-top: 16px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text2);
+}
+.timeframe-row strong { color: var(--text); }
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .header-inner { padding: 0 16px; }

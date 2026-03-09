@@ -41,8 +41,45 @@ def format_telegram_message(result: dict) -> str:
     if pattern and pattern != "N/A" and pattern.lower() != "none detected":
         msg += "Pattern: {}\n".format(pattern)
 
-    msg += "\n{}\n\n".format(analysis["short_summary"])
-    msg += "Short-term target: {}\n".format(analysis.get("price_target_short", "N/A"))
+    msg += "\n{}\n".format(analysis["short_summary"])
+
+    # Action trigger
+    action_trigger = analysis.get("action_trigger", "")
+    if action_trigger and action_trigger != "N/A":
+        msg += "\n>> {}\n".format(action_trigger)
+
+    # Support & Resistance
+    supports = analysis.get("support_levels", [])
+    resistances = analysis.get("resistance_levels", [])
+    if supports or resistances:
+        msg += "\n*Levels:*"
+        for s in supports[:2]:
+            msg += "\nSupport: {}".format(s)
+        for r in resistances[:2]:
+            msg += "\nResistance: {}".format(r)
+        msg += "\n"
+
+    # Breakout info
+    breakout = analysis.get("breakout_level", "")
+    if breakout and breakout != "N/A":
+        direction = analysis.get("breakout_direction", "")
+        msg += "\nBreakout: {} ({})".format(breakout, direction)
+
+    exp_gain = analysis.get("expected_gain_pct", "")
+    exp_loss = analysis.get("expected_loss_pct", "")
+    rr_ratio = analysis.get("risk_reward_ratio", "")
+    if exp_gain and exp_gain != "N/A":
+        msg += "\nExpected gain: +{}".format(exp_gain.replace("+", ""))
+    if exp_loss and exp_loss != "N/A":
+        msg += "\nExpected loss: -{}".format(exp_loss.replace("-", ""))
+    if rr_ratio and rr_ratio != "N/A":
+        msg += "\nRisk/Reward: {}".format(rr_ratio)
+
+    timeframe = analysis.get("breakout_timeframe", "")
+    if timeframe and timeframe != "N/A":
+        msg += "\nTimeframe: {}".format(timeframe)
+
+    msg += "\n\nShort-term target: {}\n".format(analysis.get("price_target_short", "N/A"))
     msg += "Long-term target: {}\n".format(analysis.get("price_target_long", "N/A"))
 
     stop = analysis.get("stop_loss", "")

@@ -46,6 +46,21 @@ YOUR CORE TECHNICAL FRAMEWORK:
    - RSI > 70 = overbought, RSI < 30 = oversold.
    - Stochastic crossovers confirm momentum shifts.
 
+6. **Support & Resistance Analysis (CRITICAL)**:
+   - Identify key SUPPORT zones: prior swing lows, high-volume areas, SMA levels acting as support.
+   - Identify key RESISTANCE zones: prior swing highs, historical price ceilings, trendline resistance.
+   - Determine if price is near support (buying opportunity) or near resistance (breakout or rejection risk).
+   - Use the computed support/resistance levels provided in the data as starting points but refine them.
+   - A breakout above resistance with volume = strong BUY signal.
+   - A breakdown below support = SELL signal.
+
+7. **Breakout & Expected Move Analysis**:
+   - If a pattern is forming (VCP, cup & handle, triangle, flag), identify the BREAKOUT LEVEL.
+   - Calculate the expected % gain from breakout level to measured move target.
+   - Calculate the expected % loss if the trade fails (breakout level to stop-loss).
+   - Provide a risk/reward ratio.
+   - Estimate a timeframe for when the breakout or breakdown may occur based on the pattern.
+
 YOUR FUNDAMENTAL CHECKS:
 - Earnings growth (EPS Q/Q, quarterly), revenue growth, profit margins
 - P/E vs Forward P/E (expansion or contraction?)
@@ -57,15 +72,31 @@ IMPORTANT: You must ALWAYS respond in valid JSON format ONLY with this exact str
     "recommendation": "BUY" | "SELL" | "HOLD",
     "confidence": "HIGH" | "MEDIUM" | "LOW",
     "short_summary": "One-line actionable summary (max 150 chars)",
-    "full_analysis": "Detailed multi-paragraph analysis. MUST include sections on: 1) Moving Average Setup (SMA 200/150/20 alignment), 2) ATR & Volatility, 3) Chart Pattern (any cup&handle, double bottom, H&S, flags, VCP etc.), 4) Volume Analysis, 5) Fundamentals, 6) News Sentiment, 7) Risk & Stop-Loss (using ATR)",
+    "full_analysis": "Detailed multi-paragraph analysis. MUST include sections on: 1) Moving Average Setup (SMA 200/150/20 alignment), 2) ATR & Volatility, 3) Chart Pattern (any cup&handle, double bottom, H&S, flags, VCP etc.), 4) Support & Resistance Zones, 5) Breakout/Breakdown Scenarios, 6) Volume Analysis, 7) Fundamentals, 8) News Sentiment, 9) Risk & Stop-Loss (using ATR)",
     "key_factors": ["factor1", "factor2", "factor3", "factor4", "factor5"],
     "risk_level": "HIGH" | "MEDIUM" | "LOW",
-    "price_target_short": "Short-term price target or range",
-    "price_target_long": "Long-term price target or range",
-    "stop_loss": "Suggested stop-loss level based on ATR and support",
+    "price_target_short": "$XX.XX (short-term target, 1-4 weeks)",
+    "price_target_long": "$XX.XX (long-term target, 2-6 months)",
+    "stop_loss": "$XX.XX (based on ATR and nearest support)",
     "chart_pattern": "Identified chart pattern (e.g., Cup and Handle forming, Bull Flag, Flat Base, etc.) or None detected",
-    "trend_status": "STAGE 1 (Basing) | STAGE 2 (Advancing) | STAGE 3 (Topping) | STAGE 4 (Declining)"
+    "trend_status": "STAGE 1 (Basing) | STAGE 2 (Advancing) | STAGE 3 (Topping) | STAGE 4 (Declining)",
+    "support_levels": ["$XX.XX - $XX.XX (description)", "$XX.XX (description)"],
+    "resistance_levels": ["$XX.XX - $XX.XX (description)", "$XX.XX (description)"],
+    "breakout_level": "$XX.XX (the key price level that triggers a breakout or breakdown)",
+    "breakout_direction": "BULLISH | BEARISH | NEUTRAL",
+    "expected_gain_pct": "XX.X% (potential upside from current price to target if breakout succeeds)",
+    "expected_loss_pct": "XX.X% (potential downside from current price to stop-loss if trade fails)",
+    "risk_reward_ratio": "1:X.X (risk to reward ratio)",
+    "action_trigger": "Specific condition that triggers the trade (e.g., 'BUY on break above $16.10 with volume > 2M' or 'SELL if price closes below $14.50')",
+    "breakout_timeframe": "Expected timeframe for the move (e.g., '1-2 weeks', 'Within 5 trading days', 'After earnings on Mar 18')"
 }
+
+CRITICAL RULES FOR THE NEW FIELDS:
+- support_levels and resistance_levels MUST be arrays of strings, each with a dollar price and brief description.
+- breakout_level MUST be a specific dollar price, not a range.
+- expected_gain_pct and expected_loss_pct MUST be calculated from current price.
+- action_trigger MUST be a specific, actionable statement with exact price levels and conditions.
+- breakout_timeframe MUST give a realistic estimate based on the pattern and catalysts (e.g., earnings date).
 
 DISCLAIMER: Always note in the full_analysis that this is AI-generated analysis for informational purposes and not financial advice."""
 
@@ -119,6 +150,69 @@ def _compute_atr(highs, lows, closes, period=14):
     if not true_ranges:
         return None
     return round(sum(true_ranges) / len(true_ranges), 2)
+
+
+def _find_support_resistance(highs, lows, closes, current_price):
+    """Find key support and resistance levels from historical price data.
+
+    Uses swing highs/lows with clustering to identify zones.
+    """
+    if len(closes) < 20 or current_price is None:
+        return [], []
+
+    # Find swing highs and swing lows (local extremes using 5-bar lookback/forward)
+    swing_highs = []
+    swing_lows = []
+    window = 5
+
+    for i in range(window, len(closes) - window):
+        # Swing high: higher than surrounding bars
+        if highs[i] == max(highs[i - window:i + window + 1]):
+            swing_highs.append(round(highs[i], 2))
+        # Swing low: lower than surrounding bars
+        if lows[i] == min(lows[i - window:i + window + 1]):
+            swing_lows.append(round(lows[i], 2))
+
+    # Cluster nearby levels (within 2% of each other)
+    def cluster_levels(levels, threshold_pct=0.02):
+        if not levels:
+            return []
+        levels = sorted(levels)
+        clusters = []
+        current_cluster = [levels[0]]
+        for i in range(1, len(levels)):
+            if abs(levels[i] - current_cluster[0]) / current_cluster[0] <= threshold_pct:
+                current_cluster.append(levels[i])
+            else:
+                avg = round(sum(current_cluster) / len(current_cluster), 2)
+                clusters.append((avg, len(current_cluster)))
+                current_cluster = [levels[i]]
+        if current_cluster:
+            avg = round(sum(current_cluster) / len(current_cluster), 2)
+            clusters.append((avg, len(current_cluster)))
+        # Sort by number of touches (strength), then by proximity to current price
+        clusters.sort(key=lambda x: (-x[1], abs(x[0] - current_price)))
+        return clusters
+
+    high_clusters = cluster_levels(swing_highs)
+    low_clusters = cluster_levels(swing_lows)
+
+    # Separate into support (below price) and resistance (above price)
+    supports = []
+    resistances = []
+
+    for level, touches in low_clusters:
+        if level < current_price * 1.02:  # Allow slight overlap
+            supports.append({"price": level, "touches": touches})
+    for level, touches in high_clusters:
+        if level > current_price * 0.98:  # Allow slight overlap
+            resistances.append({"price": level, "touches": touches})
+
+    # Sort supports descending (nearest first), resistances ascending (nearest first)
+    supports.sort(key=lambda x: -x["price"])
+    resistances.sort(key=lambda x: x["price"])
+
+    return supports[:4], resistances[:4]
 
 
 def _get_price_history(ticker):
@@ -210,6 +304,14 @@ def get_stock_data(ticker: str) -> dict:
         result["recent_20d_lows"] = [round(l, 2) for l in recent_lows]
         result["recent_20d_volumes"] = recent_vols
 
+        # Extended price action (last 60 days for better support/resistance analysis)
+        ext_closes = closes[-60:] if len(closes) >= 60 else closes
+        ext_highs = highs[-60:] if len(highs) >= 60 else highs
+        ext_lows = lows[-60:] if len(lows) >= 60 else lows
+        result["recent_60d_prices"] = [round(c, 2) for c in ext_closes]
+        result["recent_60d_highs"] = [round(h, 2) for h in ext_highs]
+        result["recent_60d_lows"] = [round(l, 2) for l in ext_lows]
+
         # 52-week high/low from data
         if len(closes) >= 200:
             result["52w_high_calc"] = round(max(highs[-252:] if len(highs) >= 252 else highs), 2)
@@ -234,6 +336,33 @@ def get_stock_data(ticker: str) -> dict:
                 result["volume_trend"] = "INCREASING (accumulation or distribution)"
             else:
                 result["volume_trend"] = "STABLE"
+
+        # Support & Resistance levels
+        price = result.get("current_price") or (closes[-1] if closes else None)
+        if price:
+            supports, resistances = _find_support_resistance(highs, lows, closes, price)
+            if supports:
+                result["computed_supports"] = [
+                    "${:.2f} ({} touches)".format(s["price"], s["touches"]) for s in supports
+                ]
+            if resistances:
+                result["computed_resistances"] = [
+                    "${:.2f} ({} touches)".format(r["price"], r["touches"]) for r in resistances
+                ]
+
+            # Nearest support & resistance for quick reference
+            if supports:
+                result["nearest_support"] = supports[0]["price"]
+            if resistances:
+                result["nearest_resistance"] = resistances[0]["price"]
+
+            # Distance to support/resistance as %
+            if supports:
+                dist_support = round((price - supports[0]["price"]) / price * 100, 1)
+                result["distance_to_support_pct"] = "{}%".format(dist_support)
+            if resistances:
+                dist_resistance = round((resistances[0]["price"] - price) / price * 100, 1)
+                result["distance_to_resistance_pct"] = "{}%".format(dist_resistance)
 
     # Source 2: Finviz — comprehensive fundamentals
     try:
@@ -382,6 +511,15 @@ async def analyze_stock(ticker: str) -> dict:
                 "stop_loss": "",
                 "chart_pattern": "",
                 "trend_status": "",
+                "support_levels": [],
+                "resistance_levels": [],
+                "breakout_level": "",
+                "breakout_direction": "",
+                "expected_gain_pct": "",
+                "expected_loss_pct": "",
+                "risk_reward_ratio": "",
+                "action_trigger": "",
+                "breakout_timeframe": "",
             }
 
         return {
@@ -432,7 +570,12 @@ IMPORTANT INSTRUCTIONS:
 3. Look at the recent_20d_prices, recent_20d_highs, recent_20d_lows data and identify any chart patterns
    (cup and handle, double bottom, head and shoulders, bull flag, flat base, VCP, ascending triangle, etc.).
 4. Check volume_trend and volatility_contraction for breakout potential.
-5. Combine with fundamentals and news for your final recommendation.
+5. Use the computed_supports and computed_resistances data to identify key support/resistance zones.
+   Refine these levels and express them as price ranges where appropriate.
+6. Identify the key BREAKOUT or BREAKDOWN level and calculate the expected % gain and % loss.
+7. Provide a specific ACTION TRIGGER — the exact price and condition to act on (e.g., "BUY on close above $16.10 with volume > 1.5x average").
+8. Estimate when the expected move will happen based on pattern maturity, earnings date, and catalysts.
+9. Combine with fundamentals and news for your final recommendation.
 Respond ONLY with valid JSON.""".format(
         system=SYSTEM_PROMPT,
         ticker=ticker.upper(),
@@ -468,6 +611,15 @@ Respond ONLY with valid JSON.""".format(
             "stop_loss": "N/A",
             "chart_pattern": "N/A",
             "trend_status": "N/A",
+            "support_levels": [],
+            "resistance_levels": [],
+            "breakout_level": "N/A",
+            "breakout_direction": "NEUTRAL",
+            "expected_gain_pct": "N/A",
+            "expected_loss_pct": "N/A",
+            "risk_reward_ratio": "N/A",
+            "action_trigger": "N/A",
+            "breakout_timeframe": "N/A",
         }
     except Exception as e:
         analysis = {
@@ -482,6 +634,15 @@ Respond ONLY with valid JSON.""".format(
             "stop_loss": "N/A",
             "chart_pattern": "N/A",
             "trend_status": "N/A",
+            "support_levels": [],
+            "resistance_levels": [],
+            "breakout_level": "N/A",
+            "breakout_direction": "NEUTRAL",
+            "expected_gain_pct": "N/A",
+            "expected_loss_pct": "N/A",
+            "risk_reward_ratio": "N/A",
+            "action_trigger": "N/A",
+            "breakout_timeframe": "N/A",
         }
 
     return {
