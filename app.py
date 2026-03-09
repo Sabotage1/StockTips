@@ -2,17 +2,20 @@ import json
 import os
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+import bcrypt
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from telegram import Update
 
-from config import HOST, PORT, EXTERNAL_URL
-from database import init_db, save_analysis, get_history, get_analysis_by_id, get_unique_tickers, delete_analysis, delete_all_history
+from config import HOST, PORT, EXTERNAL_URL, AUTH_USERNAME, AUTH_PASSWORD_HASH, AUTH_SECRET_KEY
+from database import init_db, save_analysis, get_history, get_analysis_by_id, get_unique_tickers, delete_analysis, delete_all_history, block_user, unblock_user, is_user_blocked, get_blocked_users
 from stock_analyzer import analyze_stock
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
@@ -25,6 +28,49 @@ IS_SERVERLESS = bool(os.getenv("VERCEL"))
 
 telegram_app = None
 _db_initialized = False
+
+# --- Authentication ---
+_session_serializer = URLSafeTimedSerializer(AUTH_SECRET_KEY)
+SESSION_COOKIE = "stocktips_session"
+SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
+# Routes that don't require authentication
+PUBLIC_PATHS = frozenset({"/login", "/webhook/telegram"})
+
+
+def _verify_password(plain_password: str) -> bool:
+    """Verify a plain password against the stored bcrypt hash."""
+    if not AUTH_PASSWORD_HASH:
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            AUTH_PASSWORD_HASH.encode("utf-8"),
+        )
+    except Exception:
+        return False
+
+
+def _create_session_token(username: str) -> str:
+    """Create a signed session token."""
+    return _session_serializer.dumps({"user": username, "t": int(time.time())})
+
+
+def _validate_session_token(token: str):
+    """Validate a session token. Returns username or None."""
+    try:
+        data = _session_serializer.loads(token, max_age=SESSION_MAX_AGE)
+        return data.get("user")
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def _is_authenticated(request: Request) -> bool:
+    """Check if the current request has a valid session."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return False
+    return _validate_session_token(token) is not None
 
 
 def ensure_db():
@@ -70,6 +116,54 @@ else:
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Require authentication for all routes except public ones."""
+    path = request.url.path
+    # Allow public paths, static files, and favicon
+    if path in PUBLIC_PATHS or path.startswith("/static") or path == "/favicon.ico":
+        return await call_next(request)
+    if not _is_authenticated(request):
+        # API calls get 401, browser requests get redirected to login
+        if path.startswith("/api/"):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return RedirectResponse(url="/login", status_code=302)
+    return await call_next(request)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Show the login form."""
+    if _is_authenticated(request):
+        return RedirectResponse(url="/", status_code=302)
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.post("/login")
+async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Validate credentials and set session cookie."""
+    if username == AUTH_USERNAME and _verify_password(password):
+        token = _create_session_token(username)
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie(
+            key=SESSION_COOKIE,
+            value=token,
+            max_age=SESSION_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+    return JSONResponse({"error": "Invalid username or password"}, status_code=401)
+
+
+@app.get("/logout")
+async def logout():
+    """Clear the session cookie and redirect to login."""
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
 
 
 @app.post("/webhook/telegram")
@@ -218,6 +312,9 @@ async def api_analysis_detail(analysis_id: int):
     except json.JSONDecodeError:
         pass
 
+    tg_user_id = getattr(record, "telegram_user_id", "") or ""
+    blocked = is_user_blocked(tg_user_id) if tg_user_id else False
+
     return JSONResponse({
         "id": record.id,
         "ticker": record.ticker,
@@ -231,8 +328,9 @@ async def api_analysis_detail(analysis_id: int):
         "stock_data": stock_data,
         "source": record.source,
         "telegram_user": record.telegram_user,
-        "telegram_user_id": getattr(record, "telegram_user_id", "") or "",
+        "telegram_user_id": tg_user_id,
         "user_ip": getattr(record, "user_ip", "") or "",
+        "is_blocked": blocked,
         "created_at": record.created_at.isoformat() if record.created_at else "",
     })
 
@@ -287,6 +385,69 @@ async def api_tickers():
     """Get all unique tickers that have been analyzed."""
     ensure_db()
     return JSONResponse(get_unique_tickers())
+
+
+# --- Blocked Users API ---
+
+@app.post("/api/block-user")
+async def api_block_user(request: Request):
+    """Block a Telegram user by their user ID."""
+    ensure_db()
+    body = await request.json()
+    telegram_user_id = str(body.get("telegram_user_id", "")).strip()
+    if not telegram_user_id:
+        return JSONResponse({"error": "telegram_user_id is required"}, status_code=400)
+    telegram_username = body.get("telegram_username", "")
+    reason = body.get("reason", "")
+    record = block_user(telegram_user_id, telegram_username, reason)
+    return JSONResponse({
+        "ok": True,
+        "blocked": {
+            "id": record.id,
+            "telegram_user_id": record.telegram_user_id,
+            "telegram_username": record.telegram_username,
+            "blocked_at": record.blocked_at.isoformat() if record.blocked_at else "",
+        },
+    })
+
+
+@app.post("/api/unblock-user")
+async def api_unblock_user(request: Request):
+    """Unblock a Telegram user."""
+    ensure_db()
+    body = await request.json()
+    telegram_user_id = str(body.get("telegram_user_id", "")).strip()
+    if not telegram_user_id:
+        return JSONResponse({"error": "telegram_user_id is required"}, status_code=400)
+    deleted = unblock_user(telegram_user_id)
+    if not deleted:
+        return JSONResponse({"error": "User not found in block list"}, status_code=404)
+    return JSONResponse({"ok": True, "unblocked_user_id": telegram_user_id})
+
+
+@app.get("/api/blocked-users")
+async def api_blocked_users():
+    """List all blocked Telegram users."""
+    ensure_db()
+    records = get_blocked_users()
+    return JSONResponse([
+        {
+            "id": r.id,
+            "telegram_user_id": r.telegram_user_id,
+            "telegram_username": r.telegram_username,
+            "reason": r.reason,
+            "blocked_at": r.blocked_at.isoformat() if r.blocked_at else "",
+        }
+        for r in records
+    ])
+
+
+@app.get("/api/is-blocked/{telegram_user_id}")
+async def api_is_blocked(telegram_user_id: str):
+    """Check if a Telegram user is blocked."""
+    ensure_db()
+    blocked = is_user_blocked(telegram_user_id)
+    return JSONResponse({"telegram_user_id": telegram_user_id, "blocked": blocked})
 
 
 if __name__ == "__main__":

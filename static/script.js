@@ -316,6 +316,22 @@ async function showDetail(id) {
             `;
         }
 
+        // Block/unblock button for telegram users
+        let blockBtnHtml = '';
+        if (data.source === 'telegram' && data.telegram_user_id) {
+            const isBlocked = data.is_blocked;
+            blockBtnHtml = `
+                <div class="block-user-section" style="margin-bottom:16px">
+                    <button class="btn-block-user ${isBlocked ? 'blocked' : ''}"
+                            id="blockBtn"
+                            onclick="toggleBlockUser('${data.telegram_user_id}', '${(data.telegram_user || '').replace(/'/g, "\\'")}', ${isBlocked})">
+                        ${isBlocked ? 'Unblock User' : 'Block User'}
+                    </button>
+                    ${isBlocked ? '<span class="block-status">This user is blocked from using the bot</span>' : ''}
+                </div>
+            `;
+        }
+
         modalContent.innerHTML = `
             <div style="margin-bottom:20px">
                 <span class="result-ticker">${data.ticker}</span>
@@ -328,6 +344,7 @@ async function showDetail(id) {
                 <span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span>
             </div>
             <p style="color:var(--text3);font-size:12px;margin-bottom:16px">${date}${data.telegram_user ? ' &mdash; ' + data.telegram_user : ''}</p>
+            ${blockBtnHtml}
             ${userInfoHtml}
             <div class="result-summary">${data.short_summary}</div>
             <div class="chart-card" style="margin-top:16px">
@@ -341,6 +358,38 @@ async function showDetail(id) {
         `;
         modalOverlay.classList.add('active');
     } catch (err) { console.error('Detail error:', err); }
+}
+
+// Block / Unblock user
+async function toggleBlockUser(userId, username, isCurrentlyBlocked) {
+    const action = isCurrentlyBlocked ? 'unblock' : 'block';
+    if (!confirm(`${isCurrentlyBlocked ? 'Unblock' : 'Block'} user ${username || userId}? ${isCurrentlyBlocked ? 'They will be able to use the bot again.' : 'They will no longer be able to use the bot.'}`)) return;
+    try {
+        const endpoint = isCurrentlyBlocked ? '/api/unblock-user' : '/api/block-user';
+        const resp = await fetch(`${API}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_user_id: userId, telegram_username: username }),
+        });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || `${action} failed`); }
+        const btn = document.getElementById('blockBtn');
+        const section = btn.parentElement;
+        if (isCurrentlyBlocked) {
+            btn.classList.remove('blocked');
+            btn.textContent = 'Block User';
+            btn.setAttribute('onclick', `toggleBlockUser('${userId}', '${username.replace(/'/g, "\\'")}', false)`);
+            const status = section.querySelector('.block-status');
+            if (status) status.remove();
+        } else {
+            btn.classList.add('blocked');
+            btn.textContent = 'Unblock User';
+            btn.setAttribute('onclick', `toggleBlockUser('${userId}', '${username.replace(/'/g, "\\'")}', true)`);
+            const status = document.createElement('span');
+            status.className = 'block-status';
+            status.textContent = 'This user is blocked from using the bot';
+            section.appendChild(status);
+        }
+    } catch (err) { alert(`Error: ${err.message}`); }
 }
 
 // Modal

@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from config import TELEGRAM_BOT_TOKEN, EXTERNAL_URL
 from stock_analyzer import analyze_stock
-from database import save_analysis
+from database import save_analysis, is_user_blocked
 from chart_generator import generate_chart
 
 logging.basicConfig(level=logging.INFO)
@@ -98,6 +98,8 @@ def format_telegram_message(result: dict) -> str:
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
+    if update.effective_user and is_user_blocked(str(update.effective_user.id)):
+        return
     welcome = (
         "*StockTips AI Bot*\n\n"
         "Welcome! I analyze stocks using AI with 20+ years of market expertise.\n\n"
@@ -116,6 +118,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command."""
+    if update.effective_user and is_user_blocked(str(update.effective_user.id)):
+        return
     help_text = (
         "*StockTips AI -- Help*\n\n"
         "*Send a ticker symbol* like `AAPL` or `GOOGL` and I'll analyze it.\n\n"
@@ -161,6 +165,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_ticker(update: Update, ticker: str):
     """Analyze a ticker and send the result."""
+    user = update.effective_user
+    if user and is_user_blocked(str(user.id)):
+        return  # Silently ignore blocked users
+
     waiting_msg = await update.message.reply_text(
         "Analyzing {}... Fetching news, stock data, and running AI analysis. This may take a moment.".format(ticker),
     )

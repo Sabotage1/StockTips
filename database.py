@@ -32,6 +32,16 @@ class TickerAnalysis(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class BlockedUser(Base):
+    __tablename__ = "blocked_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_user_id = Column(String(50), unique=True, index=True, nullable=False)
+    telegram_username = Column(String(200), default="")
+    reason = Column(Text, default="")
+    blocked_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class WatchlistItem(Base):
     __tablename__ = "watchlist"
 
@@ -191,5 +201,59 @@ def get_unique_tickers() -> List[str]:
     try:
         results = db.query(TickerAnalysis.ticker).distinct().all()
         return [r[0] for r in results]
+    finally:
+        db.close()
+
+
+# --- Blocked Users ---
+
+def block_user(telegram_user_id: str, telegram_username: str = "", reason: str = "") -> BlockedUser:
+    """Block a Telegram user by their numeric user ID."""
+    db = SessionLocal()
+    try:
+        existing = db.query(BlockedUser).filter(BlockedUser.telegram_user_id == telegram_user_id).first()
+        if existing:
+            return existing
+        record = BlockedUser(
+            telegram_user_id=telegram_user_id,
+            telegram_username=telegram_username,
+            reason=reason,
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        return record
+    finally:
+        db.close()
+
+
+def unblock_user(telegram_user_id: str) -> bool:
+    """Unblock a Telegram user. Returns True if a record was deleted."""
+    db = SessionLocal()
+    try:
+        record = db.query(BlockedUser).filter(BlockedUser.telegram_user_id == telegram_user_id).first()
+        if not record:
+            return False
+        db.delete(record)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def is_user_blocked(telegram_user_id: str) -> bool:
+    """Check if a Telegram user is blocked."""
+    db = SessionLocal()
+    try:
+        return db.query(BlockedUser).filter(BlockedUser.telegram_user_id == telegram_user_id).first() is not None
+    finally:
+        db.close()
+
+
+def get_blocked_users() -> List[BlockedUser]:
+    """Get all blocked users."""
+    db = SessionLocal()
+    try:
+        return db.query(BlockedUser).order_by(BlockedUser.blocked_at.desc()).all()
     finally:
         db.close()

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockTips AI - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #06060b;
+            --surface: rgba(255,255,255,0.04);
+            --surface2: rgba(255,255,255,0.07);
+            --border: rgba(255,255,255,0.08);
+            --border2: rgba(255,255,255,0.12);
+            --text: #eceef4;
+            --text2: #7a7f96;
+            --text3: #4a4e63;
+            --accent: #7c6cf0;
+            --accent2: #a78bfa;
+            --red: #f87171;
+            --red-bg: rgba(248,113,113,0.12);
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        .blob { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.15; animation: drift 20s ease-in-out infinite alternate; }
+        .blob-1 { width: 600px; height: 600px; background: #7c6cf0; top: -200px; left: -100px; }
+        .blob-2 { width: 500px; height: 500px; background: #f87171; bottom: -200px; right: -100px; animation-delay: -7s; }
+        @keyframes drift { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(40px,-30px) scale(1.1); } }
+
+        .login-card {
+            position: relative; z-index: 1;
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            backdrop-filter: blur(24px);
+        }
+        .login-logo {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 22px; font-weight: 800; letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            justify-content: center;
+        }
+        .login-logo em { font-style: normal; color: var(--accent2); }
+        .login-sub {
+            text-align: center; color: var(--text2); font-size: 14px;
+            margin-bottom: 32px;
+        }
+        .form-group { margin-bottom: 18px; }
+        .form-label {
+            display: block; font-size: 12px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text2); margin-bottom: 8px;
+        }
+        .form-input {
+            width: 100%; padding: 14px 16px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border2);
+            border-radius: var(--radius-sm);
+            color: var(--text); font-size: 15px; font-family: inherit;
+            outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,108,240,0.15); }
+        .form-input::placeholder { color: var(--text3); }
+        .btn-login {
+            width: 100%; padding: 14px;
+            border: none; border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--accent) 0%, #9b7ff0 100%);
+            color: #fff; font-size: 15px; font-weight: 700;
+            cursor: pointer; transition: all 0.2s;
+            font-family: inherit; margin-top: 8px;
+        }
+        .btn-login:hover { filter: brightness(1.15); transform: scale(1.02); }
+        .btn-login:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
+        .error-msg {
+            background: var(--red-bg);
+            border: 1px solid rgba(248,113,113,0.25);
+            color: var(--red);
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 500;
+            margin-bottom: 18px;
+            display: none;
+        }
+        .error-msg.active { display: block; }
+    </style>
+</head>
+<body>
+
+<div class="ambient">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+</div>
+
+<div class="login-card">
+    <div class="login-logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#lg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6c5ce7"/></linearGradient></defs>
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
+        </svg>
+        <span>Stock<em>Tips</em></span>
+    </div>
+    <p class="login-sub">Sign in to access the dashboard</p>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <form id="loginForm" method="POST" action="/login">
+        <div class="form-group">
+            <label class="form-label" for="username">Username</label>
+            <input class="form-input" type="text" id="username" name="username" placeholder="Enter username" autocomplete="username" required autofocus>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-input" type="password" id="password" name="password" placeholder="Enter password" autocomplete="current-password" required>
+        </div>
+        <button class="btn-login" type="submit">Sign In</button>
+    </form>
+</div>
+
+<script>
+const form = document.getElementById('loginForm');
+const errorMsg = document.getElementById('errorMsg');
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.remove('active');
+    const btn = form.querySelector('.btn-login');
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+        const resp = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(new FormData(form)),
+        });
+        if (resp.redirected) {
+            window.location.href = resp.url;
+            return;
+        }
+        const data = await resp.json();
+        if (data.error) {
+            errorMsg.textContent = data.error;
+            errorMsg.classList.add('active');
+        }
+    } catch (err) {
+        errorMsg.textContent = 'Connection error. Try again.';
+        errorMsg.classList.add('active');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+    }
+});
+</script>
+</body>
+</html>
