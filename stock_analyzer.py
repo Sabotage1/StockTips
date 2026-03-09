@@ -508,11 +508,15 @@ def get_stock_data(ticker: str) -> dict:
     return result
 
 
-async def analyze_stock(ticker: str) -> dict:
+async def analyze_stock(ticker: str, purchase_price=None) -> dict:
     """Full AI-powered stock analysis combining news + stock data + Gemini AI.
-    Returns cached result if the same ticker was analyzed within the last hour."""
-    # Check for recent cached analysis (within last hour)
-    cached = get_recent_analysis(ticker, max_age_minutes=60)
+    Returns cached result if the same ticker was analyzed within the last hour.
+    If purchase_price is provided, skips cache and tailors advice to that entry price."""
+    # Skip cache when a purchase price is provided — analysis must be personalized
+    if purchase_price is None:
+        cached = get_recent_analysis(ticker, max_age_minutes=60)
+    else:
+        cached = None
     if cached:
         news_data = []
         try:
@@ -586,12 +590,26 @@ async def analyze_stock(ticker: str) -> dict:
         default=str,
     )
 
+    purchase_section = ""
+    if purchase_price is not None:
+        purchase_section = """
+## PORTFOLIO CONTEXT
+The user ALREADY OWNS this stock. They bought at ${:.2f}.
+Your analysis MUST be tailored to this position:
+- Calculate their current P&L (current price vs ${:.2f} entry).
+- Recommend whether to HOLD, SELL (take profit / cut loss), or ADD MORE at a specific price.
+- If in profit: identify where to take partial/full profits and where to trail the stop loss.
+- If at a loss: assess whether to hold for recovery, average down, or cut the loss.
+- The stop loss in your recommendation must protect their entry price or limit further downside.
+- Frame all targets and risk/reward relative to their ${:.2f} entry, not just the current price.
+""".format(purchase_price, purchase_price, purchase_price)
+
     user_prompt = """{system}
 
 ---
 
 Analyze the stock {ticker} ({company}) and provide your expert recommendation.
-
+{purchase}
 ## STOCK DATA & TECHNICAL INDICATORS
 {stock}
 
@@ -614,6 +632,7 @@ Respond ONLY with valid JSON.""".format(
         system=SYSTEM_PROMPT,
         ticker=ticker.upper(),
         company=company_name,
+        purchase=purchase_section,
         stock=stock_info,
         count=len(news_articles),
         news=news_text if news_text else "No recent news articles found.",

@@ -33,8 +33,15 @@ def format_telegram_message(result: dict) -> str:
 
     price_str = "${:.2f}".format(price) if price else "N/A"
 
+    purchase_price = result.get("purchase_price")
+
     msg = "*{ticker}* -- *{rec}*\n\n".format(ticker=ticker, rec=rec_label)
     msg += "Price: {}\n".format(price_str)
+    if purchase_price is not None and price is not None:
+        pnl = price - purchase_price
+        pnl_pct = (pnl / purchase_price) * 100
+        pnl_sign = "+" if pnl >= 0 else ""
+        msg += "Entry: ${:.2f} ({}{:.2f}%)\n".format(purchase_price, pnl_sign, pnl_pct)
     msg += "Confidence: {}\n".format(conf_label)
     msg += "Risk: {}\n".format(analysis.get("risk_level", "N/A"))
 
@@ -128,6 +135,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "*StockTips AI -- Help*\n\n"
         "*Send a ticker symbol* like `AAPL` or `GOOGL` and I'll analyze it.\n\n"
+        "*Own a stock?* Add your buy price after the ticker:\n"
+        "`AAPL 150` or `/analyze TSLA 220.50`\n"
+        "I'll tailor the analysis to your position with P&L and exit strategy.\n\n"
         "*What I analyze:*\n"
         "- Current price & key financial metrics\n"
         "- Recent news from multiple sources\n"
@@ -145,41 +155,71 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /analyze TICKER command."""
+    """Handle /analyze TICKER [price] command."""
     if not context.args:
-        await update.message.reply_text("Usage: /analyze TICKER\nExample: /analyze AAPL")
+        await update.message.reply_text("Usage: /analyze TICKER [price]\nExample: /analyze AAPL\nExample: /analyze AAPL 150.50")
         return
     ticker = context.args[0].upper().strip()
-    await process_ticker(update, ticker)
+    purchase_price = None
+    if len(context.args) >= 2:
+        raw = context.args[1].replace("$", "").replace(",", "").strip()
+        try:
+            p = float(raw)
+            if p > 0:
+                purchase_price = p
+        except ValueError:
+            pass
+    await process_ticker(update, ticker, purchase_price=purchase_price)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle plain text messages -- treat them as ticker symbols."""
-    text = update.message.text.strip().upper()
-    # Extract potential tickers (1-5 uppercase letters)
-    tickers = re.findall(r"\b[A-Z]{1,5}\b", text)
-    if not tickers:
+    """Handle plain text messages -- treat them as ticker symbols.
+
+    Supports optional purchase price after the ticker:
+      AAPL 150   or   AAPL $150.50
+    """
+    text = update.message.text.strip()
+    # Match ticker optionally followed by a dollar price
+    pairs = re.findall(r"\b([A-Za-z]{1,5})\b(?:\s+\$?([\d]+(?:\.[\d]{1,2})?))?", text)
+    tickers_with_price = []
+    for match in pairs:
+        ticker = match[0].upper()
+        price_str = match[1]
+        purchase_price = None
+        if price_str:
+            try:
+                p = float(price_str)
+                if p > 0:
+                    purchase_price = p
+            except ValueError:
+                pass
+        tickers_with_price.append((ticker, purchase_price))
+
+    if not tickers_with_price:
         await update.message.reply_text(
-            "I didn't recognize any stock ticker. Send a ticker like AAPL or TSLA.",
+            "I didn't recognize any stock ticker. Send a ticker like AAPL or TSLA.\nTo include your buy price: AAPL 150",
         )
         return
 
-    for ticker in tickers[:3]:  # Limit to 3 tickers per message
-        await process_ticker(update, ticker)
+    for ticker, purchase_price in tickers_with_price[:3]:
+        await process_ticker(update, ticker, purchase_price=purchase_price)
 
 
-async def process_ticker(update: Update, ticker: str):
+async def process_ticker(update: Update, ticker: str, purchase_price=None):
     """Analyze a ticker and send the result."""
     user = update.effective_user
     if user and is_user_blocked(str(user.id)):
         return  # Silently ignore blocked users
 
+    price_note = ""
+    if purchase_price is not None:
+        price_note = " (bought at ${:.2f})".format(purchase_price)
     waiting_msg = await update.message.reply_text(
-        "Analyzing {}... Fetching news, stock data, and running AI analysis. This may take a moment.".format(ticker),
+        "Analyzing {}{}... Fetching news, stock data, and running AI analysis. This may take a moment.".format(ticker, price_note),
     )
 
     try:
-        result = await analyze_stock(ticker)
+        result = await analyze_stock(ticker, purchase_price=purchase_price)
 
         # Always save to history so every telegram search is recorded
         analysis = result["analysis"]
@@ -204,6 +244,10 @@ async def process_ticker(update: Update, ticker: str):
             telegram_user=telegram_user,
             telegram_user_id=telegram_user_id,
         )
+
+        # Attach purchase price so the formatter can show P&L
+        if purchase_price is not None:
+            result["purchase_price"] = purchase_price
 
         # Send formatted response
         msg = format_telegram_message(result)

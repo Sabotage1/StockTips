@@ -206,12 +206,21 @@ async def api_analyze(request: Request):
     ensure_db()
     body = await request.json()
     ticker = body.get("ticker", "").strip().upper()
+    raw_price = body.get("purchase_price")
+    purchase_price = None
+    if raw_price is not None:
+        try:
+            purchase_price = float(str(raw_price).replace("$", "").replace(",", "").strip())
+            if purchase_price <= 0:
+                purchase_price = None
+        except (ValueError, TypeError):
+            pass
 
     if not ticker or len(ticker) > 10:
         return JSONResponse({"error": "Invalid ticker symbol"}, status_code=400)
 
     try:
-        result = await analyze_stock(ticker)
+        result = await analyze_stock(ticker, purchase_price=purchase_price)
         analysis = result["analysis"]
 
         # Capture client IP
@@ -263,6 +272,7 @@ async def api_analyze(request: Request):
             "risk_reward_ratio": analysis.get("risk_reward_ratio", ""),
             "action_trigger": analysis.get("action_trigger", ""),
             "breakout_timeframe": analysis.get("breakout_timeframe", ""),
+            "purchase_price": purchase_price,
             "news_count": len(result["news_articles"]),
             "news_articles": result["news_articles"][:10],
             "stock_data": result["stock_data"],

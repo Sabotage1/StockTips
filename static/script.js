@@ -40,11 +40,18 @@ async function analyze() {
     loadingEl.classList.add('active');
     resultCard.classList.remove('active');
 
+    const priceInput = document.getElementById('purchasePriceInput');
+    const rawPrice = priceInput ? priceInput.value.trim().replace('$', '').replace(',', '') : '';
+    const body = { ticker };
+    if (rawPrice && !isNaN(parseFloat(rawPrice)) && parseFloat(rawPrice) > 0) {
+        body.purchase_price = parseFloat(rawPrice);
+    }
+
     try {
         const resp = await fetch(`${API}/api/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticker }),
+            body: JSON.stringify(body),
         });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Analysis failed'); }
         renderResult(await resp.json());
@@ -84,6 +91,16 @@ function renderResult(data) {
     const riskClass = data.risk_level === 'LOW' ? 'badge-high' : data.risk_level === 'HIGH' ? 'badge-low' : 'badge-medium';
     const priceStr = data.current_price ? `$${data.current_price.toFixed(2)}` : 'N/A';
     const priceColor = rec.startsWith('BUY') ? 'var(--green)' : rec.startsWith('SELL') ? 'var(--red)' : 'var(--yellow)';
+
+    // Entry price / P&L
+    let entryHtml = '';
+    if (data.purchase_price && data.current_price) {
+        const pnl = data.current_price - data.purchase_price;
+        const pnlPct = (pnl / data.purchase_price) * 100;
+        const sign = pnl >= 0 ? '+' : '';
+        const pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        entryHtml = `<div class="entry-price-row" style="margin-top:6px;font-size:13px;color:var(--text2)">Entry: $${data.purchase_price.toFixed(2)} <span style="color:${pnlColor};font-weight:600">(${sign}${pnlPct.toFixed(1)}%)</span></div>`;
+    }
 
     // Factors
     let factorsHtml = '';
@@ -213,6 +230,7 @@ function renderResult(data) {
                 </div>
                 <span class="result-price" style="color:${priceColor}">${priceStr}</span>
             </div>
+            ${entryHtml}
             <div class="badges">
                 <span class="badge ${recClass}">${rec}</span>
                 <span class="badge ${confClass}">${data.confidence} confidence</span>
