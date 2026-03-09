@@ -229,12 +229,23 @@ async def api_analysis_detail(analysis_id: int):
 
 @app.get("/api/chart/{ticker}")
 async def api_chart(ticker: str):
-    """Generate a candlestick chart PNG for a ticker."""
+    """Generate a candlestick chart PNG for a ticker with analysis overlays."""
+    ensure_db()
     ticker = ticker.strip().upper()
     if not ticker or len(ticker) > 10:
         return JSONResponse({"error": "Invalid ticker"}, status_code=400)
     try:
-        png_bytes = generate_chart(ticker)
+        # Look up latest analysis for overlays
+        from database import get_recent_analysis
+        analysis_data = None
+        cached = get_recent_analysis(ticker, max_age_minutes=120)
+        if cached and cached.analysis_json:
+            try:
+                analysis_data = json.loads(cached.analysis_json)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        png_bytes = generate_chart(ticker, analysis_data=analysis_data)
         if png_bytes is None:
             return JSONResponse({"error": "Could not generate chart"}, status_code=500)
         return Response(content=png_bytes, media_type="image/png")

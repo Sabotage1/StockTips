@@ -194,13 +194,13 @@ async def process_ticker(update: Update, ticker: str):
         msg = format_telegram_message(result)
         await waiting_msg.edit_text(msg, parse_mode="Markdown")
 
-        # Send candlestick chart
+        # Send candlestick chart with analysis overlays
         try:
-            chart_bytes = generate_chart(result["ticker"], result.get("company_name", ""))
+            chart_bytes = generate_chart(result["ticker"], result.get("company_name", ""), analysis_data=analysis)
             if chart_bytes:
                 await update.message.reply_photo(
                     photo=chart_bytes,
-                    caption="{} -- 6 Month Candlestick Chart (SMA 20/150/200)".format(result["ticker"]),
+                    caption="{} -- 6 Month Chart with S/R Levels".format(result["ticker"]),
                 )
         except Exception as chart_err:
             logger.warning("Chart generation failed for {}: {}".format(ticker, chart_err))
