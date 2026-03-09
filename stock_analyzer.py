@@ -587,6 +587,63 @@ Respond ONLY with valid JSON.""".format(
 
     # Call Gemini AI
     response_text = ""
+    _FALLBACK_FIELDS = {
+        "key_factors": [],
+        "risk_level": "MEDIUM",
+        "price_target_short": "N/A",
+        "price_target_long": "N/A",
+        "stop_loss": "N/A",
+        "chart_pattern": "N/A",
+        "trend_status": "N/A",
+        "support_levels": [],
+        "resistance_levels": [],
+        "breakout_level": "N/A",
+        "breakout_direction": "NEUTRAL",
+        "expected_gain_pct": "N/A",
+        "expected_loss_pct": "N/A",
+        "risk_reward_ratio": "N/A",
+        "action_trigger": "N/A",
+        "breakout_timeframe": "N/A",
+    }
+
+    def _make_error_analysis(summary, detail):
+        a = {"recommendation": "HOLD", "confidence": "LOW",
+             "short_summary": summary, "full_analysis": detail}
+        a.update(_FALLBACK_FIELDS)
+        return a
+
+    def _detect_quota_error(err_str):
+        """Check if an error string indicates Gemini API quota exhaustion."""
+        quota_keywords = ["resource exhausted", "quota", "rate limit", "429",
+                          "too many requests", "limit exceeded", "resourceexhausted"]
+        lower = err_str.lower()
+        for kw in quota_keywords:
+            if kw in lower:
+                return True
+        return False
+
+    def _quota_error_message():
+        """Build a user-friendly quota error message with reset time."""
+        import datetime as _dt
+        # Gemini free tier resets daily at midnight Pacific Time (UTC-8 / UTC-7 DST)
+        now_utc = _dt.datetime.utcnow()
+        # Approximate Pacific midnight as 08:00 UTC (PST) or 07:00 UTC (PDT)
+        pacific_offset = 8  # PST; close enough for estimate
+        next_reset_utc = now_utc.replace(hour=pacific_offset, minute=0, second=0, microsecond=0)
+        if next_reset_utc <= now_utc:
+            next_reset_utc += _dt.timedelta(days=1)
+        hours_left = (next_reset_utc - now_utc).total_seconds() / 3600
+        reset_str = "{:.1f} hours (resets at ~midnight Pacific Time)".format(hours_left)
+        return (
+            "Gemini AI API free tier quota exhausted. Daily limit resets in approximately {}.".format(reset_str),
+            "The Gemini API free tier has a daily request/token limit. "
+            "Your quota has been exceeded for today. "
+            "The limit resets at approximately midnight Pacific Time (~{} hours from now). "
+            "You can try again after the reset, or upgrade to a paid Gemini API plan for higher limits.".format(
+                "{:.1f}".format(hours_left)
+            ),
+        )
+
     try:
         response = model.generate_content(
             user_prompt,
@@ -599,51 +656,32 @@ Respond ONLY with valid JSON.""".format(
         response_text = response.text
         analysis = json.loads(response_text)
     except json.JSONDecodeError:
-        analysis = {
-            "recommendation": "HOLD",
-            "confidence": "LOW",
-            "short_summary": "Analysis for {} completed but response parsing failed. Manual review recommended.".format(ticker.upper()),
-            "full_analysis": response_text or "Analysis failed.",
-            "key_factors": [],
-            "risk_level": "MEDIUM",
-            "price_target_short": "N/A",
-            "price_target_long": "N/A",
-            "stop_loss": "N/A",
-            "chart_pattern": "N/A",
-            "trend_status": "N/A",
-            "support_levels": [],
-            "resistance_levels": [],
-            "breakout_level": "N/A",
-            "breakout_direction": "NEUTRAL",
-            "expected_gain_pct": "N/A",
-            "expected_loss_pct": "N/A",
-            "risk_reward_ratio": "N/A",
-            "action_trigger": "N/A",
-            "breakout_timeframe": "N/A",
-        }
+        # Gemini returned something but not valid JSON — could be a quota error in disguise
+        if _detect_quota_error(response_text):
+            summary, detail = _quota_error_message()
+            analysis = _make_error_analysis(summary, detail)
+        else:
+            # Try to extract JSON from markdown-wrapped response
+            cleaned = response_text.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            try:
+                analysis = json.loads(cleaned)
+            except (json.JSONDecodeError, ValueError):
+                analysis = _make_error_analysis(
+                    "Analysis for {} completed but response parsing failed. Manual review recommended.".format(ticker.upper()),
+                    response_text or "Analysis failed.",
+                )
     except Exception as e:
-        analysis = {
-            "recommendation": "HOLD",
-            "confidence": "LOW",
-            "short_summary": "Error analyzing {}: {}".format(ticker.upper(), str(e)[:100]),
-            "full_analysis": "An error occurred during analysis: {}".format(str(e)),
-            "key_factors": [],
-            "risk_level": "MEDIUM",
-            "price_target_short": "N/A",
-            "price_target_long": "N/A",
-            "stop_loss": "N/A",
-            "chart_pattern": "N/A",
-            "trend_status": "N/A",
-            "support_levels": [],
-            "resistance_levels": [],
-            "breakout_level": "N/A",
-            "breakout_direction": "NEUTRAL",
-            "expected_gain_pct": "N/A",
-            "expected_loss_pct": "N/A",
-            "risk_reward_ratio": "N/A",
-            "action_trigger": "N/A",
-            "breakout_timeframe": "N/A",
-        }
+        err_str = str(e)
+        if _detect_quota_error(err_str):
+            summary, detail = _quota_error_message()
+            analysis = _make_error_analysis(summary, detail)
+        else:
+            analysis = _make_error_analysis(
+                "Error analyzing {}: {}".format(ticker.upper(), err_str[:100]),
+                "An error occurred during analysis: {}".format(err_str),
+            )
 
     return {
         "ticker": ticker.upper(),
