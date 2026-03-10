@@ -853,46 +853,41 @@ Respond ONLY with valid JSON.""".format(
 
     analysis = None
     last_response_text = ""
+    last_error = ""
     for model_key, model_instance in _GEMINI_MODELS:
         try:
             response = model_instance.generate_content(user_prompt, generation_config=gen_config)
             track(model_key)
-            response_text = response.text
-            last_response_text = response_text
-            parsed = _extract_json(response_text)
+            resp_text = response.text
+            if resp_text:
+                last_response_text = resp_text
+            parsed = _extract_json(resp_text)
             if parsed is not None:
                 analysis = parsed
                 break  # success
-            # Parse failed — try next model
+            # Parse failed — log and try next model
+            print("Gemini {} returned unparseable response for {}: {}".format(
+                model_key, ticker.upper(), (resp_text or "")[:200]))
+            last_error = "JSON parse failed"
             continue
         except Exception as e:
             err_str = str(e)
-            if _detect_quota_error(err_str):
-                # Quota exhausted — try next model
-                continue
-            # Check if we got partial response_text before the exception
-            if response_text:
-                last_response_text = response_text
-                parsed = _extract_json(response_text)
-                if parsed is not None:
-                    analysis = parsed
-                    break
-            analysis = _make_error_analysis(
-                "Error analyzing {}: {}".format(ticker.upper(), err_str[:100]),
-                "An error occurred during analysis: {}".format(err_str),
-            )
-            break
+            print("Gemini {} error for {}: {}".format(model_key, ticker.upper(), err_str[:200]))
+            last_error = err_str
+            # Always try next model regardless of error type
+            continue
 
-    # All models exhausted — if we got a response but couldn't parse, show that
+    # All models exhausted
     if analysis is None:
-        if last_response_text and not _detect_quota_error(last_response_text):
-            analysis = _make_error_analysis(
-                "Analysis for {} completed but response parsing failed. Manual review recommended.".format(ticker.upper()),
-                last_response_text,
-            )
-        else:
+        if _detect_quota_error(last_error):
             summary, detail = _quota_error_message()
             analysis = _make_error_analysis(summary, detail)
+        else:
+            analysis = _make_error_analysis(
+                "Analysis for {} failed across all models. {}".format(
+                    ticker.upper(), last_error[:100] if last_error else "Unknown error"),
+                last_response_text or "No response received from any model.",
+            )
 
     # Embed news_digest inside analysis dict so it's stored with analysis_json
     if news_digest:
