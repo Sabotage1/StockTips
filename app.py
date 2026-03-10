@@ -274,7 +274,20 @@ async def api_analyze(request: Request):
         session = _get_session(request)
         web_user = session["user"] if session else ""
 
-        # Always save to history (even cached results) so every search is recorded
+        # Skip saving error results to history
+        _error_markers = ["parsing failed", "error analyzing", "quota exhausted",
+                          "an error occurred", "analysis failed"]
+        _summary_lower = analysis.get("short_summary", "").lower()
+        is_error = analysis.get("confidence") == "LOW" and any(
+            m in _summary_lower for m in _error_markers
+        )
+        if is_error:
+            return JSONResponse({
+                "error": analysis.get("short_summary", "Analysis failed"),
+                "full_analysis": analysis.get("full_analysis", ""),
+            }, status_code=502)
+
+        # Save successful results to history
         record = save_analysis(
             ticker=result["ticker"],
             company_name=result["company_name"],
