@@ -1,5 +1,6 @@
 const API = '';
 let currentPanel = 'analyze';
+let currentUserRole = 'viewer';
 
 const tickerInput = document.getElementById('tickerInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
@@ -20,6 +21,7 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.getElementById(`panel-${currentPanel}`).classList.add('active');
         if (currentPanel === 'history') loadHistory();
+        if (currentPanel === 'users') loadUsers();
     });
 });
 
@@ -317,7 +319,7 @@ async function loadHistory() {
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td style="display:flex;gap:6px;align-items:center">
                     ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${r.share_token}', this)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
-                    <button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>
+                    ${currentUserRole === 'admin' ? `<button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
@@ -359,9 +361,9 @@ async function showDetail(id) {
             `;
         }
 
-        // Block/unblock button for telegram users
+        // Block/unblock button for telegram users (admin only)
         let blockBtnHtml = '';
-        if (data.source === 'telegram' && data.telegram_user_id) {
+        if (currentUserRole === 'admin' && data.source === 'telegram' && data.telegram_user_id) {
             const isBlocked = data.is_blocked;
             blockBtnHtml = `
                 <div class="block-user-section" style="margin-bottom:16px">
@@ -477,4 +479,105 @@ filterSource.addEventListener('change', loadHistory);
 
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
+// --- Role-based UI ---
+async function fetchCurrentUser() {
+    try {
+        const resp = await fetch(`${API}/api/me`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        currentUserRole = data.role || 'viewer';
+        if (currentUserRole === 'admin') {
+            const navUsers = document.getElementById('navUsers');
+            if (navUsers) navUsers.style.display = '';
+        }
+        // Hide delete buttons for non-admins
+        if (currentUserRole !== 'admin') {
+            const clearBtn = document.getElementById('clearAllBtn');
+            if (clearBtn) clearBtn.style.display = 'none';
+        }
+    } catch (err) { console.error('Failed to fetch user info:', err); }
+}
+
+// --- User Management (admin) ---
+async function loadUsers() {
+    const tbody = document.getElementById('usersBody');
+    if (!tbody) return;
+    try {
+        const resp = await fetch(`${API}/api/users`);
+        if (!resp.ok) return;
+        const users = await resp.json();
+        if (!users.length) {
+            tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No users</td></tr>';
+            return;
+        }
+        tbody.innerHTML = users.map(u => {
+            const d = u.created_at ? new Date(u.created_at).toLocaleString() : '';
+            const roleCls = u.role === 'admin' ? 'badge-buy' : 'badge-info';
+            const deleteBtn = u.role === 'admin' ? '' :
+                `<button class="btn-delete-row" onclick="deleteUserAccount(${u.id}, '${u.username.replace(/'/g, "\\'")}')" title="Delete">&times;</button>`;
+            return `<tr>
+                <td><strong>${u.username}</strong></td>
+                <td><span class="badge ${roleCls}" style="font-size:10px;padding:3px 8px">${u.role}</span></td>
+                <td style="color:var(--text2);font-size:12px">${d}</td>
+                <td>${deleteBtn}</td>
+            </tr>`;
+        }).join('');
+    } catch (err) { console.error('Users error:', err); }
+}
+
+async function createUser() {
+    const username = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newPassword').value;
+    const role = document.getElementById('newUserRole').value;
+    const msg = document.getElementById('createUserMsg');
+
+    if (!username || !password) {
+        msg.style.display = 'block';
+        msg.style.color = 'var(--red)';
+        msg.textContent = 'Username and password are required';
+        return;
+    }
+    if (password.length < 4) {
+        msg.style.display = 'block';
+        msg.style.color = 'var(--red)';
+        msg.textContent = 'Password must be at least 4 characters';
+        return;
+    }
+
+    try {
+        const resp = await fetch(`${API}/api/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, role }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            msg.style.display = 'block';
+            msg.style.color = 'var(--red)';
+            msg.textContent = data.error || 'Failed to create user';
+            return;
+        }
+        msg.style.display = 'block';
+        msg.style.color = 'var(--green)';
+        msg.textContent = `User "${data.user.username}" created as ${data.user.role}`;
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        loadUsers();
+    } catch (err) {
+        msg.style.display = 'block';
+        msg.style.color = 'var(--red)';
+        msg.textContent = 'Connection error';
+    }
+}
+
+async function deleteUserAccount(id, username) {
+    if (!confirm(`Delete user "${username}"? They will no longer be able to log in.`)) return;
+    try {
+        const resp = await fetch(`${API}/api/users/${id}`, { method: 'DELETE' });
+        if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Delete failed'); }
+        loadUsers();
+    } catch (err) { alert(`Error: ${err.message}`); }
+}
+
+fetchCurrentUser();
 loadHistory();

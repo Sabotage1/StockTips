@@ -36,6 +36,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 History
             </button>
+            <button class="nav-btn" data-panel="users" id="navUsers" style="display:none">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                Users
+            </button>
             <a href="/logout" class="nav-btn" style="text-decoration:none;margin-left:8px;color:var(--text3)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Logout
@@ -137,6 +141,49 @@
                     <tr><td colspan="8" class="empty-row">No analysis history yet</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- USERS PANEL (admin only) -->
+    <div id="panel-users" class="panel">
+        <div class="hero" style="padding-bottom:24px">
+            <h2 class="hero-title">User Management</h2>
+            <p class="hero-sub">Create and manage user accounts</p>
+        </div>
+
+        <div class="user-mgmt-card" style="background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:24px;margin-bottom:24px;max-width:500px;margin-left:auto;margin-right:auto">
+            <div class="card-title" style="margin-bottom:16px">Create New User</div>
+            <div style="display:flex;flex-direction:column;gap:12px">
+                <input type="text" id="newUsername" placeholder="Username" class="filter-input" style="width:100%">
+                <input type="password" id="newPassword" placeholder="Password (min 4 chars)" class="filter-input" style="width:100%">
+                <select id="newUserRole" class="filter-select" style="width:100%">
+                    <option value="viewer">Viewer (search & view only)</option>
+                    <option value="admin">Admin (full access)</option>
+                </select>
+                <button class="btn-go" onclick="createUser()" style="width:100%;border-radius:var(--radius-sm)">
+                    <span class="btn-text">Create User</span>
+                </button>
+            </div>
+            <div id="createUserMsg" style="margin-top:12px;font-size:13px;display:none"></div>
+        </div>
+
+        <div style="max-width:600px;margin:0 auto">
+            <div class="card-title" style="margin-bottom:12px">All Users</div>
+            <div class="table-wrap">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersBody">
+                        <tr><td colspan="4" class="empty-row">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 

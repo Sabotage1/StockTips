@@ -44,6 +44,16 @@ class BlockedUser(Base):
     blocked_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), unique=True, index=True, nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    role = Column(String(20), default="viewer")  # "admin" or "viewer"
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class WatchlistItem(Base):
     __tablename__ = "watchlist"
 
@@ -57,6 +67,8 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     # Migrate: add new columns to existing tables (safe for SQLite)
     _migrate_add_columns()
+    # Seed the admin user if no users exist
+    _seed_admin_user()
 
 
 def _migrate_add_columns():
@@ -91,6 +103,25 @@ def _migrate_add_columns():
                 db.commit()
         except Exception:
             db.rollback()
+    finally:
+        db.close()
+
+
+def _seed_admin_user():
+    """Create the Sabotage admin user if no users exist yet."""
+    from config import AUTH_USERNAME, AUTH_PASSWORD_HASH
+    db = SessionLocal()
+    try:
+        if db.query(User).count() == 0 and AUTH_USERNAME and AUTH_PASSWORD_HASH:
+            admin = User(
+                username=AUTH_USERNAME,
+                password_hash=AUTH_PASSWORD_HASH,
+                role="admin",
+            )
+            db.add(admin)
+            db.commit()
+    except Exception:
+        db.rollback()
     finally:
         db.close()
 
@@ -284,5 +315,55 @@ def get_blocked_users() -> List[BlockedUser]:
     db = SessionLocal()
     try:
         return db.query(BlockedUser).order_by(BlockedUser.blocked_at.desc()).all()
+    finally:
+        db.close()
+
+
+# --- User Management ---
+
+def get_user_by_username(username: str) -> Optional[User]:
+    """Look up a user by username (case-insensitive)."""
+    db = SessionLocal()
+    try:
+        return db.query(User).filter(User.username.ilike(username)).first()
+    finally:
+        db.close()
+
+
+def get_all_users() -> List[User]:
+    """Return all users ordered by creation date."""
+    db = SessionLocal()
+    try:
+        return db.query(User).order_by(User.created_at).all()
+    finally:
+        db.close()
+
+
+def create_user(username: str, password_hash: str, role: str = "viewer") -> User:
+    """Create a new user. Raises ValueError if username already exists."""
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.username.ilike(username)).first()
+        if existing:
+            raise ValueError("Username already exists")
+        user = User(username=username, password_hash=password_hash, role=role)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+    finally:
+        db.close()
+
+
+def delete_user(user_id: int) -> bool:
+    """Delete a user by ID. Returns True if deleted."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return False
+        db.delete(user)
+        db.commit()
+        return True
     finally:
         db.close()

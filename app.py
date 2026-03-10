@@ -15,8 +15,14 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from telegram import Update
 
-from config import HOST, PORT, EXTERNAL_URL, AUTH_USERNAME, AUTH_PASSWORD_HASH, AUTH_SECRET_KEY
-from database import init_db, save_analysis, get_history, get_analysis_by_id, get_analysis_by_share_token, get_unique_tickers, delete_analysis, delete_all_history, block_user, unblock_user, is_user_blocked, get_blocked_users
+from config import HOST, PORT, EXTERNAL_URL, AUTH_SECRET_KEY
+from database import (
+    init_db, save_analysis, get_history, get_analysis_by_id,
+    get_analysis_by_share_token, get_unique_tickers, delete_analysis,
+    delete_all_history, block_user, unblock_user, is_user_blocked,
+    get_blocked_users, get_user_by_username, get_all_users, create_user,
+    delete_user,
+)
 from stock_analyzer import analyze_stock
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
@@ -39,39 +45,40 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
 PUBLIC_PATHS = frozenset({"/login", "/webhook/telegram"})
 
 
-def _verify_password(plain_password: str) -> bool:
-    """Verify a plain password against the stored bcrypt hash."""
-    if not AUTH_PASSWORD_HASH:
-        return False
-    try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
-            AUTH_PASSWORD_HASH.encode("utf-8"),
-        )
-    except Exception:
-        return False
-
-
-def _create_session_token(username: str) -> str:
+def _create_session_token(username: str, role: str = "viewer") -> str:
     """Create a signed session token."""
-    return _session_serializer.dumps({"user": username, "t": int(time.time())})
+    return _session_serializer.dumps({"user": username, "role": role, "t": int(time.time())})
 
 
 def _validate_session_token(token: str):
-    """Validate a session token. Returns username or None."""
+    """Validate a session token. Returns dict with 'user' and 'role', or None."""
     try:
         data = _session_serializer.loads(token, max_age=SESSION_MAX_AGE)
-        return data.get("user")
+        return {"user": data.get("user"), "role": data.get("role", "viewer")}
     except (BadSignature, SignatureExpired):
         return None
 
 
-def _is_authenticated(request: Request) -> bool:
-    """Check if the current request has a valid session."""
+def _get_session(request: Request):
+    """Return session dict {'user', 'role'} or None."""
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
+        return None
+    return _validate_session_token(token)
+
+
+def _is_authenticated(request: Request) -> bool:
+    """Check if the current request has a valid session."""
+    return _get_session(request) is not None
+
+
+def _is_admin(request: Request) -> bool:
+    """Check if the current user is an admin (verified from DB)."""
+    session = _get_session(request)
+    if not session:
         return False
-    return _validate_session_token(token) is not None
+    user = get_user_by_username(session["user"])
+    return user is not None and user.role == "admin"
 
 
 def ensure_db():
@@ -146,18 +153,28 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Validate credentials and set session cookie."""
-    if username == AUTH_USERNAME and _verify_password(password):
-        token = _create_session_token(username)
-        response = RedirectResponse(url="/", status_code=302)
-        response.set_cookie(
-            key=SESSION_COOKIE,
-            value=token,
-            max_age=SESSION_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-        )
-        return response
+    """Validate credentials against DB users and set session cookie."""
+    ensure_db()
+    user = get_user_by_username(username)
+    if user:
+        try:
+            valid = bcrypt.checkpw(
+                password.encode("utf-8"),
+                user.password_hash.encode("utf-8"),
+            )
+        except Exception:
+            valid = False
+        if valid:
+            token = _create_session_token(user.username, user.role)
+            response = RedirectResponse(url="/", status_code=302)
+            response.set_cookie(
+                key=SESSION_COOKIE,
+                value=token,
+                max_age=SESSION_MAX_AGE,
+                httponly=True,
+                samesite="lax",
+            )
+            return response
     return JSONResponse({"error": "Invalid username or password"}, status_code=401)
 
 
@@ -167,6 +184,20 @@ async def logout():
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie(SESSION_COOKIE)
     return response
+
+
+@app.get("/api/me")
+async def api_me(request: Request):
+    """Return the current user's info (username + role) from DB."""
+    ensure_db()
+    session = _get_session(request)
+    if not session:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    # Always look up the real role from DB (old session tokens may lack role)
+    user = get_user_by_username(session["user"])
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse({"username": user.username, "role": user.role})
 
 
 @app.post("/webhook/telegram")
@@ -454,8 +485,10 @@ async def api_share_detail(token: str):
 
 
 @app.delete("/api/analysis/{analysis_id}")
-async def api_delete_analysis(analysis_id: int):
-    """Delete a single analysis record."""
+async def api_delete_analysis(request: Request, analysis_id: int):
+    """Delete a single analysis record (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     ensure_db()
     deleted = delete_analysis(analysis_id)
     if not deleted:
@@ -464,8 +497,10 @@ async def api_delete_analysis(analysis_id: int):
 
 
 @app.delete("/api/history")
-async def api_delete_history(ticker: str = ""):
-    """Delete all history, optionally filtered by ticker."""
+async def api_delete_history(request: Request, ticker: str = ""):
+    """Delete all history, optionally filtered by ticker (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     ensure_db()
     count = delete_all_history(ticker=ticker or None)
     return JSONResponse({"ok": True, "deleted_count": count})
@@ -482,7 +517,9 @@ async def api_tickers():
 
 @app.post("/api/block-user")
 async def api_block_user(request: Request):
-    """Block a Telegram user by their user ID."""
+    """Block a Telegram user by their user ID (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     ensure_db()
     body = await request.json()
     telegram_user_id = str(body.get("telegram_user_id", "")).strip()
@@ -504,7 +541,9 @@ async def api_block_user(request: Request):
 
 @app.post("/api/unblock-user")
 async def api_unblock_user(request: Request):
-    """Unblock a Telegram user."""
+    """Unblock a Telegram user (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     ensure_db()
     body = await request.json()
     telegram_user_id = str(body.get("telegram_user_id", "")).strip()
@@ -539,6 +578,77 @@ async def api_is_blocked(telegram_user_id: str):
     ensure_db()
     blocked = is_user_blocked(telegram_user_id)
     return JSONResponse({"telegram_user_id": telegram_user_id, "blocked": blocked})
+
+
+# --- User Management API (admin only) ---
+
+@app.get("/api/users")
+async def api_list_users(request: Request):
+    """List all users (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    ensure_db()
+    users = get_all_users()
+    return JSONResponse([
+        {
+            "id": u.id,
+            "username": u.username,
+            "role": u.role,
+            "created_at": u.created_at.isoformat() if u.created_at else "",
+        }
+        for u in users
+    ])
+
+
+@app.post("/api/users")
+async def api_create_user(request: Request):
+    """Create a new user (admin only). Viewers can search & view but not delete."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    ensure_db()
+    body = await request.json()
+    username = body.get("username", "").strip()
+    password = body.get("password", "")
+    role = body.get("role", "viewer")
+    if not username or not password:
+        return JSONResponse({"error": "Username and password are required"}, status_code=400)
+    if len(username) > 100:
+        return JSONResponse({"error": "Username too long"}, status_code=400)
+    if len(password) < 4:
+        return JSONResponse({"error": "Password must be at least 4 characters"}, status_code=400)
+    if role not in ("admin", "viewer"):
+        role = "viewer"
+    try:
+        hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        user = create_user(username, hashed, role)
+        return JSONResponse({
+            "ok": True,
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "role": user.role,
+                "created_at": user.created_at.isoformat() if user.created_at else "",
+            },
+        })
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+
+
+@app.delete("/api/users/{user_id}")
+async def api_delete_user(request: Request, user_id: int):
+    """Delete a user (admin only). Cannot delete yourself."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    ensure_db()
+    session = _get_session(request)
+    # Prevent admin from deleting themselves
+    current_user = get_user_by_username(session["user"])
+    if current_user and current_user.id == user_id:
+        return JSONResponse({"error": "Cannot delete your own account"}, status_code=400)
+    deleted = delete_user(user_id)
+    if not deleted:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+    return JSONResponse({"ok": True, "deleted_id": user_id})
 
 
 if __name__ == "__main__":
