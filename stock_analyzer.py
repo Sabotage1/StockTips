@@ -107,6 +107,34 @@ CRITICAL RULES FOR RECOMMENDATION:
 - Every BUY recommendation MUST include a stop loss in parentheses. This is non-negotiable.
   The stop loss should be based on ATR, nearest support, or the pattern's invalidation level.
 
+CRITICAL STOP-LOSS RULES FOR BREAKOUT TRADES:
+- When recommending a BUY on a breakout (e.g., "BUY if breaks $XX.XX"), the stop-loss MUST be placed
+  just below the breakout level (1-3% below, or 0.5-1x ATR below the breakout price).
+  This protects against false breakouts. Do NOT place the stop at a distant support that is 8-10% below
+  the breakout — that creates an unacceptable risk/reward ratio.
+- Example: If breakout level is $50.00, stop should be around $48.50-$49.00, NOT at $45.00 support.
+- The logic: if the stock breaks out and immediately falls back below the breakout level, the breakout
+  has failed and you should exit quickly with a small loss rather than waiting for a distant support.
+- For non-breakout BUY recommendations (e.g., buying at support), the stop can be placed below
+  the support level as usual.
+
+POSITION-AWARE ANALYSIS RULES:
+- If the user has NOT provided a purchase/buy-in price, assume they do NOT own the stock.
+  In this case:
+  - Do NOT recommend buying at the current price if the stock has already broken out and run up.
+  - Instead, recommend waiting for a pullback to a specific support level or moving average.
+  - Identify the NEXT key support zone where they should look to enter (e.g., "Wait for pullback to $XX.XX area").
+  - OR identify the NEXT breakout level to watch if the stock is still consolidating.
+  - In the full_analysis, include a section called "Entry Strategy for New Positions" that explains
+    where and when to enter if not already in the stock.
+- If the user HAS provided a purchase/buy-in price, they ARE in the stock.
+  In this case:
+  - Highlight the NEXT support level to watch (where to tighten stops or add).
+  - Highlight the NEXT price target/goal for the stock.
+  - Frame the analysis around managing their existing position.
+  - In the full_analysis, include a section called "Position Management" that explains
+    the next support, next target, and what to watch for.
+
 CRITICAL RULES FOR THE NEW FIELDS:
 - support_levels and resistance_levels MUST be arrays of strings, each with a dollar price and brief description.
 - breakout_level MUST be a specific dollar price, not a range.
@@ -602,7 +630,26 @@ Your analysis MUST be tailored to this position:
 - If at a loss: assess whether to hold for recovery, average down, or cut the loss.
 - The stop loss in your recommendation must protect their entry price or limit further downside.
 - Frame all targets and risk/reward relative to their ${:.2f} entry, not just the current price.
+- Include a "Position Management" section in full_analysis highlighting:
+  * The NEXT key support level to watch (where to tighten stop or add to position).
+  * The NEXT price target/goal for this stock.
+  * What signals to watch for that would change the outlook.
 """.format(purchase_price, purchase_price, purchase_price)
+    else:
+        purchase_section = """
+## PORTFOLIO CONTEXT
+The user does NOT currently own this stock. They are evaluating whether to enter a position.
+Your analysis MUST account for this:
+- If the stock has already broken out and run up significantly, do NOT recommend chasing it.
+  Instead, recommend waiting for a pullback to a specific support/moving average level.
+- Identify the BEST entry point: either a pullback to support or a fresh breakout level to watch.
+- Include an "Entry Strategy for New Positions" section in full_analysis that explains:
+  * Where to buy: the ideal entry price or zone (pullback level, support, or next breakout).
+  * When to buy: what conditions must be met (e.g., "on a pullback to SMA20 around $XX" or "on break above $XX with volume").
+  * Where to set stop-loss relative to the recommended entry (NOT a distant support).
+- If recommending a breakout trade, the stop-loss MUST be just below the breakout level (1-3% below),
+  not at a far-away support that would result in a large loss on a false breakout.
+"""
 
     user_prompt = """{system}
 
