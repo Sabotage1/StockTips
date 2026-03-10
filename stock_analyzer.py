@@ -615,6 +615,14 @@ async def analyze_stock(ticker: str, purchase_price=None) -> dict:
         cached = get_recent_analysis(ticker, max_age_minutes=60)
     else:
         cached = None
+    # Skip cached error results — re-analyze instead
+    _error_markers = ["parsing failed", "error analyzing", "quota exhausted",
+                      "an error occurred", "analysis failed", "failed across all models"]
+    if cached and cached.short_summary:
+        _cached_lower = cached.short_summary.lower()
+        if cached.confidence == "LOW" and any(m in _cached_lower for m in _error_markers):
+            cached = None
+
     if cached:
         news_data = []
         try:
