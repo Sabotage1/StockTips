@@ -310,8 +310,15 @@ async function loadHistory() {
         document.getElementById('statSells').textContent = records.filter(r => r.recommendation.startsWith('SELL')).length;
         document.getElementById('statHolds').textContent = records.filter(r => r.recommendation === 'HOLD').length;
 
+        const isAdmin = currentUserRole === 'admin';
+        const colSpan = isAdmin ? 9 : 8;
+
+        // Show/hide the User column header
+        const userTh = document.getElementById('thUser');
+        if (userTh) userTh.style.display = isAdmin ? '' : 'none';
+
         if (!records.length) {
-            historyBody.innerHTML = '<tr><td colspan="8" class="empty-row">No analysis history yet</td></tr>';
+            historyBody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-row">No analysis history yet</td></tr>`;
             return;
         }
 
@@ -320,17 +327,19 @@ async function loadHistory() {
             const src = r.source === 'telegram' ? 'telegram' : '';
             const d = r.created_at ? new Date(r.created_at).toLocaleString() : '';
             const p = r.current_price ? `$${r.current_price.toFixed(2)}` : 'N/A';
+            const requestedBy = r.source === 'telegram' ? (r.telegram_user || '') : (r.web_user || '');
             return `<tr onclick="showDetail(${r.id})">
                 <td><strong style="font-family:'JetBrains Mono',monospace">${r.ticker}</strong></td>
                 <td>${r.company_name || ''}</td>
                 <td style="font-family:'JetBrains Mono',monospace">${p}</td>
                 <td><span class="badge ${cls}" style="font-size:10px;padding:3px 8px">${r.recommendation}</span></td>
                 <td>${r.confidence}</td>
+                ${isAdmin ? `<td style="color:var(--text2);font-size:12px">${requestedBy}</td>` : ''}
                 <td><span class="source-badge ${src}">${r.source}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td style="display:flex;gap:6px;align-items:center">
                     ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${r.share_token}', this)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
-                    ${currentUserRole === 'admin' ? `<button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>` : ''}
+                    ${isAdmin ? `<button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>` : ''}
                 </td>
             </tr>`;
         }).join('');

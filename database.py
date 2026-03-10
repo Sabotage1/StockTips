@@ -30,6 +30,7 @@ class TickerAnalysis(Base):
     telegram_user = Column(String(200), default="")
     telegram_user_id = Column(String(50), default="")  # Telegram numeric user ID
     user_ip = Column(String(100), default="")  # Client IP address
+    web_user = Column(String(100), default="")  # Logged-in web username who requested
     share_token = Column(String(32), unique=True, index=True)  # Public share link token
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -80,6 +81,7 @@ def _migrate_add_columns():
             ("ticker_analyses", "telegram_user_id", "VARCHAR(50) DEFAULT ''"),
             ("ticker_analyses", "user_ip", "VARCHAR(100) DEFAULT ''"),
             ("ticker_analyses", "share_token", "VARCHAR(32)"),
+            ("ticker_analyses", "web_user", "VARCHAR(100) DEFAULT ''"),
         ]
         for table, col, col_type in migrations:
             try:
@@ -149,6 +151,7 @@ def save_analysis(
     telegram_user_id: str = "",
     user_ip: str = "",
     analysis_json: str = "",
+    web_user: str = "",
 ) -> TickerAnalysis:
     db = SessionLocal()
     try:
@@ -167,6 +170,7 @@ def save_analysis(
             telegram_user=telegram_user,
             telegram_user_id=telegram_user_id,
             user_ip=user_ip,
+            web_user=web_user,
             share_token=uuid.uuid4().hex,
         )
         db.add(record)

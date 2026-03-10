@@ -270,6 +270,10 @@ async def api_analyze(request: Request):
         if not client_ip and request.client:
             client_ip = request.client.host or ""
 
+        # Capture web username from session
+        session = _get_session(request)
+        web_user = session["user"] if session else ""
+
         # Always save to history (even cached results) so every search is recorded
         record = save_analysis(
             ticker=result["ticker"],
@@ -284,6 +288,7 @@ async def api_analyze(request: Request):
             analysis_json=json.dumps(analysis, default=str),
             source="web",
             user_ip=client_ip,
+            web_user=web_user,
         )
 
         return JSONResponse({
@@ -340,6 +345,7 @@ async def api_history(ticker: str = "", days: int = 30):
             "short_summary": r.short_summary,
             "source": r.source,
             "telegram_user": r.telegram_user,
+            "web_user": getattr(r, "web_user", "") or "",
             "share_token": getattr(r, "share_token", "") or "",
             "created_at": r.created_at.isoformat() if r.created_at else "",
         }
