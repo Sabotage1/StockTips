@@ -820,49 +820,79 @@ Respond ONLY with valid JSON.""".format(
 
     gen_config = genai.types.GenerationConfig(
         response_mime_type="application/json",
-        max_output_tokens=8192,
+        max_output_tokens=16384,
         temperature=0.7,
     )
 
+    def _extract_json(text):
+        """Try multiple strategies to extract valid JSON from response text."""
+        if not text:
+            return None
+        # Strategy 1: parse as-is
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        cleaned = text.strip()
+        # Strategy 2: strip markdown code fences
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+            try:
+                return json.loads(cleaned)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        # Strategy 3: find outermost { ... } and parse that
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except (json.JSONDecodeError, ValueError):
+                pass
+        return None
+
     analysis = None
+    last_response_text = ""
     for model_key, model_instance in _GEMINI_MODELS:
         try:
             response = model_instance.generate_content(user_prompt, generation_config=gen_config)
             track(model_key)
             response_text = response.text
-            analysis = json.loads(response_text)
-            break  # success
-        except json.JSONDecodeError:
-            if _detect_quota_error(response_text):
-                # Quota exhausted for this model — try next
-                continue
-            # Not a quota error — parse issue
-            cleaned = response_text.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-            try:
-                analysis = json.loads(cleaned)
-            except (json.JSONDecodeError, ValueError):
-                analysis = _make_error_analysis(
-                    "Analysis for {} completed but response parsing failed. Manual review recommended.".format(ticker.upper()),
-                    response_text or "Analysis failed.",
-                )
-            break
+            last_response_text = response_text
+            parsed = _extract_json(response_text)
+            if parsed is not None:
+                analysis = parsed
+                break  # success
+            # Parse failed — try next model
+            continue
         except Exception as e:
             err_str = str(e)
             if _detect_quota_error(err_str):
                 # Quota exhausted — try next model
                 continue
+            # Check if we got partial response_text before the exception
+            if response_text:
+                last_response_text = response_text
+                parsed = _extract_json(response_text)
+                if parsed is not None:
+                    analysis = parsed
+                    break
             analysis = _make_error_analysis(
                 "Error analyzing {}: {}".format(ticker.upper(), err_str[:100]),
                 "An error occurred during analysis: {}".format(err_str),
             )
             break
 
-    # All models exhausted
+    # All models exhausted — if we got a response but couldn't parse, show that
     if analysis is None:
-        summary, detail = _quota_error_message()
-        analysis = _make_error_analysis(summary, detail)
+        if last_response_text and not _detect_quota_error(last_response_text):
+            analysis = _make_error_analysis(
+                "Analysis for {} completed but response parsing failed. Manual review recommended.".format(ticker.upper()),
+                last_response_text,
+            )
+        else:
+            summary, detail = _quota_error_message()
+            analysis = _make_error_analysis(summary, detail)
 
     # Embed news_digest inside analysis dict so it's stored with analysis_json
     if news_digest:
