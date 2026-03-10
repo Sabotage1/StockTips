@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import bcrypt
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -170,15 +171,22 @@ async def logout():
 
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request):
-    """Receive Telegram updates via webhook."""
+    """Receive Telegram updates via webhook.
+
+    Returns immediately so Telegram doesn't time out, then processes
+    the update in a background task (analysis can take 30-60s).
+    """
     ensure_db()
     tg_app = await get_telegram_app()
     if tg_app is None:
         return JSONResponse({"error": "Bot not initialized"}, status_code=503)
     data = await request.json()
     update = Update.de_json(data, tg_app.bot)
-    await tg_app.process_update(update)
-    return JSONResponse({"ok": True})
+    # Run analysis in background — respond to Telegram immediately
+    return JSONResponse(
+        {"ok": True},
+        background=BackgroundTask(tg_app.process_update, update),
+    )
 
 
 @app.get("/setup-webhook")
