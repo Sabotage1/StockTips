@@ -78,6 +78,14 @@ body {
 }
 .nav-btn:hover { color: var(--text); background: var(--surface2); }
 .nav-btn.active { color: #fff; background: var(--accent); }
+.version-tag {
+    font-size: 10px; font-weight: 600;
+    color: var(--text3); letter-spacing: 0.5px;
+    padding: 3px 8px; border-radius: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    margin-left: 4px;
+}
 
 /* === Main === */
 .main { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 32px; }
