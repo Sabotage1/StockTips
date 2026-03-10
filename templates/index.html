@@ -36,6 +36,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 History
             </button>
+            <button class="nav-btn" data-panel="usage" id="navUsage" style="display:none">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="2" width="4" height="19" rx="1"/></svg>
+                API Usage
+            </button>
             <button class="nav-btn" data-panel="users" id="navUsers" style="display:none">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                 Users
@@ -142,6 +146,15 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <!-- API USAGE PANEL (admin only) -->
+    <div id="panel-usage" class="panel">
+        <div class="hero" style="padding-bottom:24px">
+            <h2 class="hero-title">API Usage Dashboard</h2>
+            <p class="hero-sub">Today's API call counts and limits</p>
+        </div>
+        <div id="usageGrid" class="usage-grid"></div>
     </div>
 
     <!-- USERS PANEL (admin only) -->

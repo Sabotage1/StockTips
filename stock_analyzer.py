@@ -5,9 +5,22 @@ import google.generativeai as genai
 from news_fetcher import fetch_all_news
 from config import GEMINI_API_KEY, ALPHA_VANTAGE_KEY
 from database import get_recent_analysis
+from api_tracker import track
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+
+# Model tiering for analysis: Pro first (best quality), fall through on quota errors
+_GEMINI_MODELS = [
+    ("gemini_pro", genai.GenerativeModel("gemini-2.5-pro")),
+    ("gemini_flash", genai.GenerativeModel("gemini-2.5-flash")),
+    ("gemini_flash_lite", genai.GenerativeModel("gemini-2.5-flash-lite")),
+]
+
+# Models for news digest: Flash first (smarter), Flash-Lite as fallback (skip Pro)
+_GEMINI_DIGEST_MODELS = [
+    ("gemini_flash", genai.GenerativeModel("gemini-2.5-flash")),
+    ("gemini_flash_lite", genai.GenerativeModel("gemini-2.5-flash-lite")),
+]
 
 SYSTEM_PROMPT = """You are an elite stock market analyst with over 20 years of experience in the stock exchange.
 You specialize in a combined technical + fundamental approach, inspired by methods from William O'Neil (CANSLIM),
@@ -267,6 +280,7 @@ def _get_price_history(ticker):
             headers=HEADERS,
             timeout=10,
         )
+        track("yahoo_chart")
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -433,6 +447,7 @@ def get_stock_data(ticker: str) -> dict:
             headers=HEADERS,
             timeout=10,
         )
+        track("finviz")
         soup = BeautifulSoup(resp.text, "html.parser")
 
         title_tag = soup.find("h2", class_="quote-header_ticker-wrapper_company")
@@ -481,6 +496,7 @@ def get_stock_data(ticker: str) -> dict:
         def _av_get(function, extra="&interval=daily&time_period=14&series_type=close"):
             try:
                 resp = httpx.get("{}&function={}{}".format(av_base, function, extra), timeout=10)
+                track("alpha_vantage")
                 data = resp.json()
                 if "Information" in data or "Error Message" in data:
                     return None
@@ -534,6 +550,60 @@ def get_stock_data(ticker: str) -> dict:
                 result["adx_14"] = round(float(adx_values[latest]["ADX"]), 2)
 
     return result
+
+
+def generate_news_digest(news_articles):
+    """Summarize news articles into sentiment + bullet points using Flash-Lite.
+
+    Returns dict with 'sentiment' and 'summary_bullets', or None on failure.
+    Fallback chain: Flash-Lite -> Flash (skip Pro to preserve quota for analysis).
+    """
+    if not news_articles:
+        return None
+
+    news_text = ""
+    for i, article in enumerate(news_articles[:15], 1):
+        news_text += "\n{}. [{}] {}".format(i, article.get("source", ""), article.get("title", ""))
+        if article.get("summary"):
+            news_text += "\n   {}".format(article["summary"][:200])
+
+    prompt = """Summarize the following news articles into 3-5 concise bullet points.
+Then determine the overall sentiment: BULLISH, NEUTRAL, or BEARISH.
+
+NEWS ARTICLES:
+{}
+
+Respond ONLY with valid JSON in this exact format:
+{{
+    "sentiment": "BULLISH" | "NEUTRAL" | "BEARISH",
+    "summary_bullets": ["bullet 1", "bullet 2", "bullet 3"]
+}}""".format(news_text)
+
+    digest_config = genai.types.GenerationConfig(
+        response_mime_type="application/json",
+        max_output_tokens=1024,
+        temperature=0.4,
+    )
+
+    for model_key, model_instance in _GEMINI_DIGEST_MODELS:
+        try:
+            response = model_instance.generate_content(prompt, generation_config=digest_config)
+            track(model_key)
+            result = json.loads(response.text)
+            # Validate structure
+            if "sentiment" in result and "summary_bullets" in result:
+                return result
+            return None
+        except json.JSONDecodeError:
+            continue
+        except Exception as e:
+            err_str = str(e).lower()
+            quota_keywords = ["resource exhausted", "quota", "rate limit", "429",
+                              "too many requests", "limit exceeded", "resourceexhausted"]
+            if any(kw in err_str for kw in quota_keywords):
+                continue
+            return None
+    return None
 
 
 async def analyze_stock(ticker: str, purchase_price=None) -> dict:
@@ -595,6 +665,7 @@ async def analyze_stock(ticker: str, purchase_price=None) -> dict:
             "stock_data": stock_data_cached,
             "news_articles": news_data,
             "analysis": analysis,
+            "news_digest": analysis.get("news_digest") if analysis else None,
             "cached": True,
             "cached_id": cached.id,
         }
@@ -602,6 +673,9 @@ async def analyze_stock(ticker: str, purchase_price=None) -> dict:
     stock_data = get_stock_data(ticker)
     company_name = stock_data.get("company_name", ticker)
     news_articles = await fetch_all_news(ticker, company_name)
+
+    # Generate AI news digest (non-critical — analysis works without it)
+    news_digest = generate_news_digest(news_articles)
 
     # Build the analysis prompt
     news_text = ""
@@ -744,24 +818,25 @@ Respond ONLY with valid JSON.""".format(
             ),
         )
 
-    try:
-        response = model.generate_content(
-            user_prompt,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",
-                max_output_tokens=8192,
-                temperature=0.7,
-            ),
-        )
-        response_text = response.text
-        analysis = json.loads(response_text)
-    except json.JSONDecodeError:
-        # Gemini returned something but not valid JSON — could be a quota error in disguise
-        if _detect_quota_error(response_text):
-            summary, detail = _quota_error_message()
-            analysis = _make_error_analysis(summary, detail)
-        else:
-            # Try to extract JSON from markdown-wrapped response
+    gen_config = genai.types.GenerationConfig(
+        response_mime_type="application/json",
+        max_output_tokens=8192,
+        temperature=0.7,
+    )
+
+    analysis = None
+    for model_key, model_instance in _GEMINI_MODELS:
+        try:
+            response = model_instance.generate_content(user_prompt, generation_config=gen_config)
+            track(model_key)
+            response_text = response.text
+            analysis = json.loads(response_text)
+            break  # success
+        except json.JSONDecodeError:
+            if _detect_quota_error(response_text):
+                # Quota exhausted for this model — try next
+                continue
+            # Not a quota error — parse issue
             cleaned = response_text.strip()
             if cleaned.startswith("```"):
                 cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -772,16 +847,26 @@ Respond ONLY with valid JSON.""".format(
                     "Analysis for {} completed but response parsing failed. Manual review recommended.".format(ticker.upper()),
                     response_text or "Analysis failed.",
                 )
-    except Exception as e:
-        err_str = str(e)
-        if _detect_quota_error(err_str):
-            summary, detail = _quota_error_message()
-            analysis = _make_error_analysis(summary, detail)
-        else:
+            break
+        except Exception as e:
+            err_str = str(e)
+            if _detect_quota_error(err_str):
+                # Quota exhausted — try next model
+                continue
             analysis = _make_error_analysis(
                 "Error analyzing {}: {}".format(ticker.upper(), err_str[:100]),
                 "An error occurred during analysis: {}".format(err_str),
             )
+            break
+
+    # All models exhausted
+    if analysis is None:
+        summary, detail = _quota_error_message()
+        analysis = _make_error_analysis(summary, detail)
+
+    # Embed news_digest inside analysis dict so it's stored with analysis_json
+    if news_digest:
+        analysis["news_digest"] = news_digest
 
     return {
         "ticker": ticker.upper(),
@@ -790,4 +875,5 @@ Respond ONLY with valid JSON.""".format(
         "stock_data": stock_data,
         "news_articles": news_articles,
         "analysis": analysis,
+        "news_digest": news_digest,
     }

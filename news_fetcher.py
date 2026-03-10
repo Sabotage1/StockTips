@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import httpx
 from bs4 import BeautifulSoup
 from config import NEWS_API_KEY
+from api_tracker import track
 
 
 def parse_rss_entries(xml_text, max_entries=10):
@@ -32,6 +33,7 @@ async def fetch_yahoo_finance_news(ticker: str) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url)
+            track("yahoo_news")
             for entry in parse_rss_entries(resp.text):
                 entry["source"] = "Yahoo Finance"
                 articles.append(entry)
@@ -48,6 +50,7 @@ async def fetch_google_news(ticker: str, company_name: str = "") -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             resp = await client.get(url)
+            track("google_news")
             for entry in parse_rss_entries(resp.text):
                 entry["source"] = "Google News"
                 articles.append(entry)
@@ -64,6 +67,7 @@ async def fetch_finviz_news(ticker: str) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=15, headers=headers) as client:
             resp = await client.get(url)
+            track("finviz_news")
             soup = BeautifulSoup(resp.text, "html.parser")
             news_table = soup.find(id="news-table")
             if news_table:
@@ -93,6 +97,7 @@ async def fetch_newsapi(ticker: str, company_name: str = "") -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url)
+            track("newsapi")
             data = resp.json()
             for article in data.get("articles", [])[:10]:
                 articles.append({

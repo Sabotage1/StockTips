@@ -578,6 +578,64 @@ body {
 .btn-share:hover { background: rgba(245,158,11,0.22); border-color: #f59e0b; }
 .btn-share-sm { padding: 3px 10px; font-size: 10px; }
 
+/* === News Digest Card === */
+.news-digest-card {
+    margin-top: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+.sentiment-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+.sentiment-bullish {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid rgba(52,211,153,0.25);
+}
+.sentiment-bearish {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid rgba(248,113,113,0.25);
+}
+.sentiment-neutral {
+    background: var(--yellow-bg);
+    color: var(--yellow);
+    border: 1px solid rgba(251,191,36,0.25);
+}
+.digest-bullets {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.digest-bullets li {
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--text);
+    padding: 6px 0 6px 16px;
+    position: relative;
+    border-bottom: 1px solid var(--border);
+}
+.digest-bullets li:last-child { border-bottom: none; }
+.digest-bullets li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 14px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
 /* === Share Page === */
 .share-page {
     max-width: 820px; margin: 0 auto;
@@ -589,6 +647,44 @@ body {
 }
 .share-footer a { color: var(--accent2); text-decoration: none; }
 .share-footer a:hover { text-decoration: underline; }
+
+/* === API Usage Dashboard === */
+.usage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+.usage-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+}
+.usage-card-label {
+    font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text2); margin-bottom: 8px;
+}
+.usage-card-count {
+    font-size: 24px; font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text); margin-bottom: 10px;
+}
+.usage-card-limit {
+    font-size: 14px; font-weight: 500;
+    color: var(--text3);
+}
+.usage-bar-bg {
+    height: 6px; border-radius: 3px;
+    background: var(--surface2);
+    overflow: hidden;
+}
+.usage-bar-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 0.4s ease;
+}
 
 /* === Responsive === */
 @media (max-width: 768px) {

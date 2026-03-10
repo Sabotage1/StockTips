@@ -26,6 +26,7 @@ from database import (
 from stock_analyzer import analyze_stock
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
+from api_tracker import get_usage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -311,6 +312,7 @@ async def api_analyze(request: Request):
             "risk_reward_ratio": analysis.get("risk_reward_ratio", ""),
             "action_trigger": analysis.get("action_trigger", ""),
             "breakout_timeframe": analysis.get("breakout_timeframe", ""),
+            "news_digest": result.get("news_digest"),
             "purchase_price": purchase_price,
             "news_count": len(result["news_articles"]),
             "news_articles": result["news_articles"][:10],
@@ -368,6 +370,13 @@ async def api_analysis_detail(analysis_id: int):
     tg_user_id = getattr(record, "telegram_user_id", "") or ""
     blocked = is_user_blocked(tg_user_id) if tg_user_id else False
 
+    # Parse analysis_json for full detail parity
+    analysis_extra = {}
+    try:
+        analysis_extra = json.loads(record.analysis_json) if record.analysis_json else {}
+    except json.JSONDecodeError:
+        pass
+
     return JSONResponse({
         "id": record.id,
         "share_token": getattr(record, "share_token", "") or "",
@@ -378,6 +387,23 @@ async def api_analysis_detail(analysis_id: int):
         "confidence": record.confidence,
         "short_summary": record.short_summary,
         "full_analysis": record.full_analysis,
+        "key_factors": analysis_extra.get("key_factors", []),
+        "risk_level": analysis_extra.get("risk_level", ""),
+        "price_target_short": analysis_extra.get("price_target_short", ""),
+        "price_target_long": analysis_extra.get("price_target_long", ""),
+        "stop_loss": analysis_extra.get("stop_loss", ""),
+        "chart_pattern": analysis_extra.get("chart_pattern", ""),
+        "trend_status": analysis_extra.get("trend_status", ""),
+        "support_levels": analysis_extra.get("support_levels", []),
+        "resistance_levels": analysis_extra.get("resistance_levels", []),
+        "breakout_level": analysis_extra.get("breakout_level", ""),
+        "breakout_direction": analysis_extra.get("breakout_direction", ""),
+        "expected_gain_pct": analysis_extra.get("expected_gain_pct", ""),
+        "expected_loss_pct": analysis_extra.get("expected_loss_pct", ""),
+        "risk_reward_ratio": analysis_extra.get("risk_reward_ratio", ""),
+        "action_trigger": analysis_extra.get("action_trigger", ""),
+        "breakout_timeframe": analysis_extra.get("breakout_timeframe", ""),
+        "news_digest": analysis_extra.get("news_digest"),
         "news_data": news_data,
         "stock_data": stock_data,
         "source": record.source,
@@ -478,6 +504,7 @@ async def api_share_detail(token: str):
         "risk_reward_ratio": analysis_extra.get("risk_reward_ratio", ""),
         "action_trigger": analysis_extra.get("action_trigger", ""),
         "breakout_timeframe": analysis_extra.get("breakout_timeframe", ""),
+        "news_digest": analysis_extra.get("news_digest"),
         "news_count": len(news_data),
         "news_articles": news_data[:10],
         "created_at": record.created_at.isoformat() if record.created_at else "",
@@ -511,6 +538,14 @@ async def api_tickers():
     """Get all unique tickers that have been analyzed."""
     ensure_db()
     return JSONResponse(get_unique_tickers())
+
+
+@app.get("/api/usage")
+async def api_usage(request: Request):
+    """Return API usage counters (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    return JSONResponse(get_usage())
 
 
 # --- Blocked Users API ---
