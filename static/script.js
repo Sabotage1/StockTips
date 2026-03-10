@@ -460,6 +460,17 @@ async function clearAllHistory() {
     } catch (err) { alert(`Error: ${err.message}`); }
 }
 
+// Chart zoom overlay
+document.addEventListener('click', function(e) {
+    if (e.target.matches('.chart-card img')) {
+        const overlay = document.createElement('div');
+        overlay.className = 'chart-overlay';
+        overlay.innerHTML = '<img src="' + e.target.src + '" alt="Chart">';
+        overlay.addEventListener('click', function() { overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+});
+
 // Filters
 filterTicker.addEventListener('input', debounce(loadHistory, 500));
 filterSource.addEventListener('change', loadHistory);

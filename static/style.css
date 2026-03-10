@@ -294,7 +294,18 @@ body {
 }
 .chart-card img {
     width: 100%; border-radius: var(--radius-sm);
-    display: block;
+    display: block; cursor: pointer; transition: opacity 0.15s;
+}
+.chart-card img:hover { opacity: 0.85; }
+.chart-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.85); display: flex;
+    align-items: center; justify-content: center;
+    cursor: zoom-out; padding: 24px;
+}
+.chart-overlay img {
+    max-width: 95vw; max-height: 92vh;
+    border-radius: 10px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
 }
 
 .analysis-card {
