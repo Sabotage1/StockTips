@@ -49,15 +49,29 @@ analyzeBtn.addEventListener('click', analyze);
 tickerInput.addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
 tickerInput.addEventListener('focus', () => tickerInput.select());
 
+let analyzeController = null;
+
 async function analyze() {
     const ticker = tickerInput.value.trim().toUpperCase();
     if (!ticker) return;
+
+    // Abort any previous in-flight analysis
+    if (analyzeController) {
+        analyzeController.abort();
+        analyzeController = null;
+    }
+
     analyzeBtn.disabled = true;
-    loadingEl.classList.add('active');
     resultCard.classList.remove('active');
     resultCard.innerHTML = '';
 
-    // Scroll to loading so user sees progress
+    // Show loading with ticker name
+    loadingEl.classList.add('active');
+    const loadingText = loadingEl.querySelector('.loading-text');
+    const loadingSub = loadingEl.querySelector('.loading-sub');
+    if (loadingText) loadingText.textContent = 'Analyzing ' + ticker;
+    if (loadingSub) loadingSub.textContent = 'Gathering data from multiple sources...';
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     const priceInput = document.getElementById('purchasePriceInput');
@@ -67,18 +81,24 @@ async function analyze() {
         body.purchase_price = parseFloat(rawPrice);
     }
 
+    analyzeController = new AbortController();
+    const signal = analyzeController.signal;
+
     try {
         const resp = await fetch(`${API}/api/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            signal: signal,
         });
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Analysis failed'); }
         renderResult(await resp.json());
     } catch (err) {
+        if (err.name === 'AbortError') return; // replaced by new analysis, don't show error
         resultCard.innerHTML = `<div style="text-align:center;padding:32px"><p style="color:var(--red);font-size:15px;font-weight:600">Error: ${err.message}</p><p style="color:var(--text3);font-size:13px;margin-top:8px">Try again or enter a different ticker</p></div>`;
         resultCard.classList.add('active');
     } finally {
+        analyzeController = null;
         analyzeBtn.disabled = false;
         loadingEl.classList.remove('active');
         tickerInput.focus();
