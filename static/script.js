@@ -1163,74 +1163,73 @@ function applySettings() {
 // --- Drag and Drop ---
 
 var dragSrcRow = null;
+var dragOverRow = null;
+var dragPosition = null;
 
 function initDragAndDrop() {
-    var rows = document.querySelectorAll('#portfolioTable tbody tr[draggable="true"]');
-    rows.forEach(function(row) {
-        row.addEventListener('dragstart', handleDragStart);
-        row.addEventListener('dragover', handleDragOver);
-        row.addEventListener('dragenter', handleDragEnter);
-        row.addEventListener('dragleave', handleDragLeave);
-        row.addEventListener('drop', handleDrop);
-        row.addEventListener('dragend', handleDragEnd);
+    var tbody = document.querySelector('#portfolioTable tbody');
+    if (!tbody || tbody._dragInit) return;
+    tbody._dragInit = true;
+
+    tbody.addEventListener('dragstart', function(e) {
+        var row = e.target.closest('tr[draggable="true"]');
+        if (!row) return;
+        dragSrcRow = row;
+        row.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+    });
+
+    tbody.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        var row = e.target.closest('tr[draggable="true"]');
+        if (!row || row === dragSrcRow) return;
+        e.dataTransfer.dropEffect = 'move';
+        var rect = row.getBoundingClientRect();
+        var pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+        if (row === dragOverRow && pos === dragPosition) return;
+        clearDragClasses();
+        dragOverRow = row;
+        dragPosition = pos;
+        row.classList.add(pos === 'top' ? 'drag-over-top' : 'drag-over-bottom');
+    });
+
+    tbody.addEventListener('dragleave', function(e) {
+        var row = e.target.closest('tr[draggable="true"]');
+        if (row && (!e.relatedTarget || !row.contains(e.relatedTarget))) {
+            row.classList.remove('drag-over-top', 'drag-over-bottom');
+            if (row === dragOverRow) { dragOverRow = null; dragPosition = null; }
+        }
+    });
+
+    tbody.addEventListener('drop', function(e) {
+        e.preventDefault();
+        if (!dragSrcRow || !dragOverRow || dragSrcRow === dragOverRow) {
+            clearDragClasses();
+            return;
+        }
+        if (dragPosition === 'top') {
+            tbody.insertBefore(dragSrcRow, dragOverRow);
+        } else {
+            tbody.insertBefore(dragSrcRow, dragOverRow.nextSibling);
+        }
+        clearDragClasses();
+        savePortfolioOrder();
+    });
+
+    tbody.addEventListener('dragend', function() {
+        if (dragSrcRow) dragSrcRow.classList.remove('dragging');
+        clearDragClasses();
+        dragSrcRow = null;
     });
 }
 
-function handleDragStart(e) {
-    dragSrcRow = this;
-    this.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', this.getAttribute('data-item-id'));
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    var rect = this.getBoundingClientRect();
-    var midY = rect.top + rect.height / 2;
-    this.classList.remove('drag-over-top', 'drag-over-bottom');
-    if (e.clientY < midY) {
-        this.classList.add('drag-over-top');
-    } else {
-        this.classList.add('drag-over-bottom');
+function clearDragClasses() {
+    if (dragOverRow) {
+        dragOverRow.classList.remove('drag-over-top', 'drag-over-bottom');
+        dragOverRow = null;
+        dragPosition = null;
     }
-}
-
-function handleDragEnter(e) {
-    e.preventDefault();
-}
-
-function handleDragLeave() {
-    this.classList.remove('drag-over-top', 'drag-over-bottom');
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!dragSrcRow || dragSrcRow === this) {
-        this.classList.remove('drag-over-top', 'drag-over-bottom');
-        return;
-    }
-
-    var tbody = this.parentNode;
-    var isTop = this.classList.contains('drag-over-top');
-    this.classList.remove('drag-over-top', 'drag-over-bottom');
-
-    if (isTop) {
-        tbody.insertBefore(dragSrcRow, this);
-    } else {
-        tbody.insertBefore(dragSrcRow, this.nextSibling);
-    }
-
-    savePortfolioOrder();
-}
-
-function handleDragEnd() {
-    this.classList.remove('dragging');
-    document.querySelectorAll('#portfolioTable tbody tr').forEach(function(row) {
-        row.classList.remove('drag-over-top', 'drag-over-bottom');
-    });
-    dragSrcRow = null;
 }
 
 function savePortfolioOrder() {
