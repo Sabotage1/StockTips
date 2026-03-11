@@ -789,6 +789,71 @@ body {
 }
 .btn-pf-analyze:hover { background: rgba(124,108,240,0.3); }
 
+.btn-pf-buy {
+    padding: 4px 10px; border-radius: 6px; border: none;
+    background: rgba(52,211,153,0.15); color: var(--green);
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+}
+.btn-pf-buy:hover { background: rgba(52,211,153,0.3); }
+
+.btn-pf-sell {
+    padding: 4px 10px; border-radius: 6px; border: none;
+    background: rgba(248,113,113,0.15); color: var(--red);
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+}
+.btn-pf-sell:hover { background: rgba(248,113,113,0.3); }
+
+.pf-modal-btn-sell {
+    width: 100%; padding: 12px; border-radius: var(--radius-sm); border: none;
+    background: linear-gradient(135deg, var(--red) 0%, #ef4444 100%);
+    color: #fff; font-size: 14px; font-weight: 700;
+    cursor: pointer; font-family: inherit; transition: all 0.2s;
+    margin-top: 6px;
+}
+.pf-modal-btn-sell:hover { filter: brightness(1.1); }
+.pf-modal-btn-sell:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
+
+.txn-preview {
+    padding: 12px 16px; margin: 12px 0;
+    background: rgba(124,108,240,0.06); border: 1px solid rgba(124,108,240,0.2);
+    border-radius: var(--radius-sm); font-size: 13px; color: var(--text2);
+    line-height: 1.8;
+}
+.txn-preview strong {
+    color: var(--text); font-family: 'JetBrains Mono', monospace; font-weight: 600;
+}
+
+.sell-all-link {
+    font-size: 12px; color: var(--accent2); cursor: pointer;
+    text-decoration: underline; font-weight: 500; margin-left: 8px;
+}
+.sell-all-link:hover { color: var(--text); }
+
+.txn-history-table {
+    width: 100%; border-collapse: collapse; margin-top: 10px;
+}
+.txn-history-table th {
+    padding: 8px 12px; text-align: left;
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text3); font-weight: 600;
+    border-bottom: 1px solid var(--border);
+}
+.txn-history-table td {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+}
+.txn-history-table tbody tr:last-child td { border-bottom: none; }
+
+.txn-action-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.txn-buy { background: var(--green-bg); color: var(--green); }
+.txn-sell { background: var(--red-bg); color: var(--red); }
+
 .btn-add-portfolio {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 5px 14px; border-radius: 8px;

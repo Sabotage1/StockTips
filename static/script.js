@@ -954,6 +954,12 @@ function renderPortfolioSummary(data) {
         dayPnlEl.textContent = (dp >= 0 ? '+$' : '-$') + Math.abs(dp).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         dayPnlEl.style.color = dp >= 0 ? 'var(--green)' : 'var(--red)';
     }
+    var realizedEl = document.getElementById('pfRealizedPnl');
+    if (realizedEl) {
+        var rp = t.realized_pnl || 0;
+        realizedEl.textContent = (rp >= 0 ? '+$' : '-$') + Math.abs(rp).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        realizedEl.style.color = rp >= 0 ? 'var(--green)' : 'var(--red)';
+    }
 }
 
 function renderPortfolioTable(items) {
@@ -996,6 +1002,8 @@ function renderPortfolioTable(items) {
             '<td data-col="day_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayColor + ';font-weight:600">' + (dayChg || 'N/A') + '</td>' +
             '<td data-col="signals" style="max-width:200px">' + signalsHtml + '</td>' +
             '<td data-col="actions" style="white-space:nowrap">' +
+                '<button class="btn-pf-buy" onclick="event.stopPropagation();openBuySharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ')" title="Buy More">+Buy</button> ' +
+                '<button class="btn-pf-sell" onclick="event.stopPropagation();openSellSharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ',' + (it.current_price || 0) + ')" title="Sell">-Sell</button> ' +
                 '<button class="btn-pf-edit" onclick="openEditPortfolioItem(' + it.id + ',' + it.shares + ',' + it.purchase_price + ',' + (it.stop_loss || 0) + ',\'' + it.ticker + '\')" title="Edit">Edit</button> ' +
                 '<button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
                 '<button class="btn-delete-row" onclick="removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
@@ -1160,7 +1168,7 @@ var COLUMN_LABELS = {
 };
 var CARD_LABELS = {
     total_value: 'Total Value', total_cost: 'Total Cost', total_pnl: 'Total P&L',
-    total_return: 'Return', day_pnl: 'Day P&L'
+    total_return: 'Return', day_pnl: 'Day P&L', realized_pnl: 'Realized P&L'
 };
 
 function toggleSettingsPanel() {
@@ -1783,10 +1791,292 @@ function renderStockDetail(data) {
             '<img src="' + API + '/api/chart/' + data.ticker + '" alt="Chart" onerror="this.parentElement.style.display=\'none\'" />' +
         '</div>' +
 
+        // Transaction History
+        '<div class="card" style="margin-top:16px" id="txnHistoryCard">' +
+            '<div class="card-title">Transaction History</div>' +
+            '<div id="txnHistoryContent"><span style="color:var(--text3);font-size:13px">Loading...</span></div>' +
+        '</div>' +
+
         // Actions
         '<div class="stock-detail-actions">' +
+            '<button class="btn-pf-buy" style="padding:10px 22px;font-size:14px;border-radius:var(--radius-sm)" onclick="openBuySharesModal(' + data.id + ',\'' + data.ticker + '\',' + data.shares + ',' + data.purchase_price + ')">+Buy More</button>' +
+            '<button class="btn-pf-sell" style="padding:10px 22px;font-size:14px;border-radius:var(--radius-sm)" onclick="openSellSharesModal(' + data.id + ',\'' + data.ticker + '\',' + data.shares + ',' + data.purchase_price + ',' + (data.current_price || 0) + ')">-Sell Shares</button>' +
             '<button class="btn-full-analysis" onclick="analyzePortfolioItem(' + data.id + ',\'' + data.ticker + '\')">Full AI Analysis</button>' +
         '</div>';
+
+    // Load transaction history after rendering
+    loadTransactionHistory(data.id);
+}
+
+// --- Buy More Shares Modal ---
+
+function openBuySharesModal(id, ticker, currentShares, avgCost) {
+    var overlay = document.getElementById('editPfOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'editPfOverlay';
+        overlay.className = 'modal-overlay';
+        overlay.onclick = function(e) { if (e.target === overlay) closeEditPfModal(); };
+        document.body.appendChild(overlay);
+    }
+    overlay.innerHTML =
+        '<div class="modal" style="max-width:420px">' +
+            '<button class="modal-close" onclick="closeEditPfModal()">&times;</button>' +
+            '<div class="pf-modal-title">Buy More ' + ticker + '</div>' +
+            '<div class="pf-modal-sub">Current: ' + currentShares + ' shares at $' + avgCost.toFixed(2) + ' avg</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Additional Shares</label>' +
+                '<input type="number" id="buyMoreShares" class="pf-modal-input" placeholder="e.g. 10" min="0" step="any" oninput="updateBuyPreview(' + currentShares + ',' + avgCost + ')">' +
+            '</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Purchase Price ($)</label>' +
+                '<input type="number" id="buyMorePrice" class="pf-modal-input" placeholder="$0.00" min="0" step="any" oninput="updateBuyPreview(' + currentShares + ',' + avgCost + ')">' +
+            '</div>' +
+            '<div class="txn-preview" id="buyPreview" style="display:none"></div>' +
+            '<div class="pf-modal-error" id="buyMoreError"></div>' +
+            '<button class="pf-modal-btn" id="buyMoreSubmitBtn" onclick="submitBuyMore(' + id + ',\'' + ticker + '\',' + currentShares + ',' + avgCost + ')">Buy Shares</button>' +
+        '</div>';
+    overlay.classList.add('active');
+    setTimeout(function() { var inp = document.getElementById('buyMoreShares'); if (inp) inp.focus(); }, 100);
+}
+
+function updateBuyPreview(currentShares, avgCost) {
+    var newShares = parseFloat(document.getElementById('buyMoreShares').value) || 0;
+    var newPrice = parseFloat(document.getElementById('buyMorePrice').value) || 0;
+    var preview = document.getElementById('buyPreview');
+    if (newShares > 0 && newPrice > 0) {
+        var totalShares = currentShares + newShares;
+        var newAvg = (currentShares * avgCost + newShares * newPrice) / totalShares;
+        preview.innerHTML =
+            'Total shares: <strong>' + totalShares + '</strong><br>' +
+            'New avg cost: <strong>$' + newAvg.toFixed(2) + '</strong> (was $' + avgCost.toFixed(2) + ')<br>' +
+            'Cost of purchase: <strong>$' + (newShares * newPrice).toFixed(2) + '</strong>';
+        preview.style.display = '';
+    } else {
+        preview.style.display = 'none';
+    }
+}
+
+async function submitBuyMore(id, ticker, currentShares, avgCost) {
+    var errorEl = document.getElementById('buyMoreError');
+    var btn = document.getElementById('buyMoreSubmitBtn');
+    var newShares = parseFloat(document.getElementById('buyMoreShares').value);
+    var newPrice = parseFloat(document.getElementById('buyMorePrice').value);
+
+    errorEl.style.display = 'none';
+    if (!newShares || newShares <= 0) {
+        errorEl.textContent = 'Please enter a valid number of shares';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (!newPrice || newPrice <= 0) {
+        errorEl.textContent = 'Please enter a valid price';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Buying...';
+    try {
+        var resp = await fetch(API + '/api/portfolio/' + id + '/buy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shares: newShares, price: newPrice }),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errorEl.textContent = data.error || 'Failed to buy';
+            errorEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Buy Shares';
+            return;
+        }
+        var overlay = document.getElementById('editPfOverlay');
+        overlay.querySelector('.modal').innerHTML =
+            '<div class="pf-modal-success">' +
+                '<div class="pf-modal-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+                '<div class="pf-modal-success-text">Bought ' + newShares + ' more ' + ticker + '</div>' +
+                '<div class="pf-modal-success-sub">New avg: $' + data.purchase_price.toFixed(2) + ' | Total: ' + data.shares + ' shares</div>' +
+            '</div>';
+        setTimeout(function() { closeEditPfModal(); }, 1500);
+        if (currentStockDetailId) { openStockDetail(currentStockDetailId); } else { refreshPortfolioPrices(); }
+    } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Buy Shares';
+    }
+}
+
+// --- Sell Shares Modal ---
+
+function openSellSharesModal(id, ticker, currentShares, avgCost, currentPrice) {
+    var overlay = document.getElementById('editPfOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'editPfOverlay';
+        overlay.className = 'modal-overlay';
+        overlay.onclick = function(e) { if (e.target === overlay) closeEditPfModal(); };
+        document.body.appendChild(overlay);
+    }
+    overlay.innerHTML =
+        '<div class="modal" style="max-width:420px">' +
+            '<button class="modal-close" onclick="closeEditPfModal()">&times;</button>' +
+            '<div class="pf-modal-title">Sell ' + ticker + '</div>' +
+            '<div class="pf-modal-sub">Current: ' + currentShares + ' shares at $' + avgCost.toFixed(2) + ' avg</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Shares to Sell <a class="sell-all-link" onclick="document.getElementById(\'sellShares\').value=' + currentShares + ';updateSellPreview(' + currentShares + ',' + avgCost + ')">Sell All</a></label>' +
+                '<input type="number" id="sellShares" class="pf-modal-input" placeholder="e.g. 5" min="0" max="' + currentShares + '" step="any" oninput="updateSellPreview(' + currentShares + ',' + avgCost + ')">' +
+            '</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Sell Price ($)</label>' +
+                '<input type="number" id="sellPrice" class="pf-modal-input" value="' + (currentPrice > 0 ? currentPrice.toFixed(2) : '') + '" min="0" step="any" oninput="updateSellPreview(' + currentShares + ',' + avgCost + ')">' +
+            '</div>' +
+            '<div class="txn-preview" id="sellPreview" style="display:none"></div>' +
+            '<div class="pf-modal-error" id="sellError"></div>' +
+            '<button class="pf-modal-btn-sell" id="sellSubmitBtn" onclick="submitSellShares(' + id + ',\'' + ticker + '\',' + currentShares + ',' + avgCost + ')">Sell Shares</button>' +
+        '</div>';
+    overlay.classList.add('active');
+    setTimeout(function() { var inp = document.getElementById('sellShares'); if (inp) inp.focus(); }, 100);
+    // Trigger preview if price is pre-filled
+    if (currentPrice > 0) {
+        setTimeout(function() { updateSellPreview(currentShares, avgCost); }, 150);
+    }
+}
+
+function updateSellPreview(currentShares, avgCost) {
+    var sellCount = parseFloat(document.getElementById('sellShares').value) || 0;
+    var sellPrice = parseFloat(document.getElementById('sellPrice').value) || 0;
+    var preview = document.getElementById('sellPreview');
+    if (sellCount > 0 && sellPrice > 0) {
+        var pnl = (sellPrice - avgCost) * sellCount;
+        var pnlSign = pnl >= 0 ? '+' : '-';
+        var pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        var remaining = currentShares - sellCount;
+        var proceeds = sellCount * sellPrice;
+        preview.innerHTML =
+            'Proceeds: <strong>$' + proceeds.toFixed(2) + '</strong><br>' +
+            'Realized P&L: <strong style="color:' + pnlColor + '">' + pnlSign + '$' + Math.abs(pnl).toFixed(2) + '</strong><br>' +
+            (remaining > 0 ? 'Remaining: <strong>' + remaining.toFixed(2) + ' shares</strong>' : '<strong style="color:var(--yellow)">Full position sold</strong>');
+        preview.style.display = '';
+        if (sellCount > currentShares) {
+            preview.innerHTML += '<br><span style="color:var(--red)">Cannot sell more than you own</span>';
+        }
+    } else {
+        preview.style.display = 'none';
+    }
+}
+
+async function submitSellShares(id, ticker, currentShares, avgCost) {
+    var errorEl = document.getElementById('sellError');
+    var btn = document.getElementById('sellSubmitBtn');
+    var sellCount = parseFloat(document.getElementById('sellShares').value);
+    var sellPrice = parseFloat(document.getElementById('sellPrice').value);
+
+    errorEl.style.display = 'none';
+    if (!sellCount || sellCount <= 0) {
+        errorEl.textContent = 'Please enter a valid number of shares';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (sellCount > currentShares) {
+        errorEl.textContent = 'Cannot sell more than ' + currentShares + ' shares';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (!sellPrice || sellPrice <= 0) {
+        errorEl.textContent = 'Please enter a valid sell price';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Selling...';
+    try {
+        var resp = await fetch(API + '/api/portfolio/' + id + '/sell', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shares: sellCount, price: sellPrice }),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errorEl.textContent = data.error || 'Failed to sell';
+            errorEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Sell Shares';
+            return;
+        }
+        var pnl = data.realized_pnl || 0;
+        var pnlSign = pnl >= 0 ? '+' : '-';
+        var pnlColor = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+        var overlay = document.getElementById('editPfOverlay');
+        overlay.querySelector('.modal').innerHTML =
+            '<div class="pf-modal-success">' +
+                '<div class="pf-modal-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="' + (pnl >= 0 ? 'var(--green)' : 'var(--red)') + '" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+                '<div class="pf-modal-success-text">Sold ' + sellCount + ' ' + ticker + '</div>' +
+                '<div class="pf-modal-success-sub" style="color:' + pnlColor + '">Realized P&L: ' + pnlSign + '$' + Math.abs(pnl).toFixed(2) + '</div>' +
+                (data.fully_sold ? '<div class="pf-modal-success-sub" style="margin-top:4px">Position fully closed</div>' : '') +
+            '</div>';
+        setTimeout(function() {
+            closeEditPfModal();
+            if (data.fully_sold && currentStockDetailId) {
+                closeStockDetail();
+            }
+        }, 2000);
+        if (data.fully_sold) {
+            if (!currentStockDetailId) refreshPortfolioPrices();
+        } else {
+            if (currentStockDetailId) { openStockDetail(currentStockDetailId); } else { refreshPortfolioPrices(); }
+        }
+    } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sell Shares';
+    }
+}
+
+// --- Transaction History ---
+
+async function loadTransactionHistory(itemId) {
+    var container = document.getElementById('txnHistoryContent');
+    if (!container) return;
+    try {
+        var resp = await fetch(API + '/api/portfolio/' + itemId + '/transactions');
+        if (!resp.ok) { container.innerHTML = '<span style="color:var(--text3);font-size:13px">No transactions yet</span>'; return; }
+        var txns = await resp.json();
+        if (!txns.length) {
+            container.innerHTML = '<span style="color:var(--text3);font-size:13px">No buy/sell transactions recorded yet</span>';
+            return;
+        }
+        var html = '<table class="txn-history-table"><thead><tr>' +
+            '<th>Date</th><th>Action</th><th>Shares</th><th>Price</th><th>Total</th><th>Avg Cost</th><th>P&L</th>' +
+            '</tr></thead><tbody>';
+        txns.forEach(function(t) {
+            var d = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+            var actionCls = t.action === 'BUY' ? 'txn-buy' : 'txn-sell';
+            var pnlStr = '';
+            if (t.action === 'SELL' && t.realized_pnl != null) {
+                var pColor = t.realized_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+                pnlStr = '<span style="color:' + pColor + '">' + (t.realized_pnl >= 0 ? '+' : '-') + '$' + Math.abs(t.realized_pnl).toFixed(2) + '</span>';
+            } else {
+                pnlStr = '-';
+            }
+            html += '<tr>' +
+                '<td>' + d + '</td>' +
+                '<td><span class="txn-action-badge ' + actionCls + '">' + t.action + '</span></td>' +
+                '<td>' + t.shares + '</td>' +
+                '<td>$' + t.price.toFixed(2) + '</td>' +
+                '<td>$' + t.total_amount.toFixed(2) + '</td>' +
+                '<td>' + (t.avg_cost_at_time != null ? '$' + t.avg_cost_at_time.toFixed(2) : '-') + '</td>' +
+                '<td>' + pnlStr + '</td>' +
+                '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = '<span style="color:var(--text3);font-size:13px">Failed to load transactions</span>';
+    }
 }
 
 fetchCurrentUser();

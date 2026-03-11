@@ -23,6 +23,7 @@ from database import (
     get_blocked_users, get_user_by_username, get_all_users, create_user,
     delete_user, get_user_portfolio, add_portfolio_item,
     update_portfolio_item, delete_portfolio_item,
+    buy_more_shares, sell_shares, get_portfolio_transactions, get_realized_pnl_total,
     get_user_settings, save_user_settings, reorder_portfolio,
 )
 from stock_analyzer import analyze_stock, get_quick_signals, get_quick_signals_batch
@@ -841,6 +842,104 @@ async def api_portfolio_delete(request: Request, item_id: int):
     return JSONResponse({"ok": True, "deleted_id": item_id})
 
 
+# --- Portfolio Transactions (Buy More / Sell) ---
+# NOTE: /api/portfolio/transactions/{ticker} must be defined BEFORE /{item_id} routes
+# to avoid FastAPI treating "transactions" as an item_id.
+
+@app.get("/api/portfolio/transactions/{ticker}")
+async def api_portfolio_transactions_by_ticker(request: Request, ticker: str):
+    """Get transaction history for a ticker."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    txns = get_portfolio_transactions(user_id, ticker=ticker)
+    return JSONResponse([{
+        "id": t.id, "ticker": t.ticker, "action": t.action,
+        "shares": t.shares, "price": t.price, "total_amount": t.total_amount,
+        "avg_cost_at_time": t.avg_cost_at_time, "realized_pnl": t.realized_pnl,
+        "notes": t.notes or "",
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    } for t in txns])
+
+
+@app.post("/api/portfolio/{item_id}/buy")
+async def api_portfolio_buy_more(request: Request, item_id: int):
+    """Buy more shares of an existing portfolio position."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    new_shares = body.get("shares")
+    new_price = body.get("price")
+    notes = body.get("notes", "")
+    if not new_shares or new_shares <= 0:
+        return JSONResponse({"error": "Invalid share count"}, status_code=400)
+    if not new_price or new_price <= 0:
+        return JSONResponse({"error": "Invalid price"}, status_code=400)
+    item = buy_more_shares(item_id, user_id, new_shares, new_price, notes)
+    if not item:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse({
+        "ok": True,
+        "ticker": item.ticker,
+        "shares": item.shares,
+        "purchase_price": item.purchase_price,
+    })
+
+
+@app.post("/api/portfolio/{item_id}/sell")
+async def api_portfolio_sell(request: Request, item_id: int):
+    """Sell shares from an existing portfolio position."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    sell_count = body.get("shares")
+    sell_price = body.get("price")
+    notes = body.get("notes", "")
+    if not sell_count or sell_count <= 0:
+        return JSONResponse({"error": "Invalid share count"}, status_code=400)
+    if not sell_price or sell_price <= 0:
+        return JSONResponse({"error": "Invalid price"}, status_code=400)
+    result = sell_shares(item_id, user_id, sell_count, sell_price, notes)
+    if result.get("error") == "not_found":
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if result.get("error") == "insufficient_shares":
+        return JSONResponse({
+            "error": "Cannot sell more than you own ({} available)".format(result["available"]),
+        }, status_code=400)
+    return JSONResponse({
+        "ok": True,
+        "ticker": result["ticker"],
+        "realized_pnl": result["realized_pnl"],
+        "fully_sold": result["fully_sold"],
+        "item": {
+            "shares": result["item"].shares,
+            "purchase_price": result["item"].purchase_price,
+        } if result.get("item") else None,
+    })
+
+
+@app.get("/api/portfolio/{item_id}/transactions")
+async def api_portfolio_transactions_by_item(request: Request, item_id: int):
+    """Get transaction history for a portfolio item."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    txns = get_portfolio_transactions(user_id, portfolio_item_id=item_id)
+    return JSONResponse([{
+        "id": t.id, "ticker": t.ticker, "action": t.action,
+        "shares": t.shares, "price": t.price, "total_amount": t.total_amount,
+        "avg_cost_at_time": t.avg_cost_at_time, "realized_pnl": t.realized_pnl,
+        "notes": t.notes or "",
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    } for t in txns])
+
+
 @app.get("/api/settings")
 async def api_settings_get(request: Request):
     """Return the current user's portfolio settings."""
@@ -946,6 +1045,7 @@ async def api_portfolio_refresh(request: Request):
 
     total_pnl = total_value - total_cost if total_value else None
     total_return_pct = (total_pnl / total_cost * 100) if total_pnl is not None and total_cost else None
+    realized_pnl = get_realized_pnl_total(user_id)
 
     return JSONResponse({
         "items": enriched,
@@ -955,6 +1055,7 @@ async def api_portfolio_refresh(request: Request):
             "total_pnl": round(total_pnl, 2) if total_pnl is not None else None,
             "total_return_pct": round(total_return_pct, 2) if total_return_pct is not None else None,
             "total_day_pnl": round(total_day_pnl, 2),
+            "realized_pnl": realized_pnl,
         },
     })
 

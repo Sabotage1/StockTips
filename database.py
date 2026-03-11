@@ -82,6 +82,23 @@ class PortfolioItem(Base):
     added_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+class PortfolioTransaction(Base):
+    __tablename__ = "portfolio_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    portfolio_item_id = Column(Integer, index=True, nullable=True)
+    ticker = Column(String(20), index=True, nullable=False)
+    action = Column(String(10), nullable=False)  # BUY or SELL
+    shares = Column(Float, nullable=False)
+    price = Column(Float, nullable=False)
+    total_amount = Column(Float, nullable=False)
+    avg_cost_at_time = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+    notes = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 class UserSettings(Base):
     __tablename__ = "user_settings"
 
@@ -506,6 +523,120 @@ def delete_portfolio_item(item_id: int, user_id: int) -> bool:
         db.close()
 
 
+# --- Portfolio Transactions (Buy More / Sell) ---
+
+def buy_more_shares(item_id: int, user_id: int, new_shares: float, new_price: float, notes: str = "") -> Optional[PortfolioItem]:
+    """Buy more shares of an existing position. Recalculates weighted average cost."""
+    db = SessionLocal()
+    try:
+        item = (
+            db.query(PortfolioItem)
+            .filter(PortfolioItem.id == item_id, PortfolioItem.user_id == user_id)
+            .first()
+        )
+        if not item:
+            return None
+        old_shares = item.shares
+        old_avg = item.purchase_price
+        total_shares = old_shares + new_shares
+        new_avg = (old_shares * old_avg + new_shares * new_price) / total_shares
+        item.shares = total_shares
+        item.purchase_price = round(new_avg, 4)
+        # Log transaction
+        txn = PortfolioTransaction(
+            user_id=user_id,
+            portfolio_item_id=item.id,
+            ticker=item.ticker,
+            action="BUY",
+            shares=new_shares,
+            price=new_price,
+            total_amount=round(new_shares * new_price, 2),
+            avg_cost_at_time=round(new_avg, 4),
+            notes=notes,
+        )
+        db.add(txn)
+        db.commit()
+        db.refresh(item)
+        return item
+    finally:
+        db.close()
+
+
+def sell_shares(item_id: int, user_id: int, sell_shares_count: float, sell_price: float, notes: str = "") -> dict:
+    """Sell shares from a position. Returns dict with updated item (or None if fully sold) and realized P&L."""
+    db = SessionLocal()
+    try:
+        item = (
+            db.query(PortfolioItem)
+            .filter(PortfolioItem.id == item_id, PortfolioItem.user_id == user_id)
+            .first()
+        )
+        if not item:
+            return {"error": "not_found"}
+        if sell_shares_count > item.shares:
+            return {"error": "insufficient_shares", "available": item.shares}
+        avg_cost = item.purchase_price
+        realized_pnl = round((sell_price - avg_cost) * sell_shares_count, 2)
+        remaining = round(item.shares - sell_shares_count, 6)
+        # Log transaction
+        txn = PortfolioTransaction(
+            user_id=user_id,
+            portfolio_item_id=item.id,
+            ticker=item.ticker,
+            action="SELL",
+            shares=sell_shares_count,
+            price=sell_price,
+            total_amount=round(sell_shares_count * sell_price, 2),
+            avg_cost_at_time=avg_cost,
+            realized_pnl=realized_pnl,
+            notes=notes,
+        )
+        db.add(txn)
+        if remaining <= 0:
+            db.delete(item)
+            db.commit()
+            return {"item": None, "realized_pnl": realized_pnl, "fully_sold": True, "ticker": item.ticker}
+        else:
+            item.shares = remaining
+            db.commit()
+            db.refresh(item)
+            return {"item": item, "realized_pnl": realized_pnl, "fully_sold": False, "ticker": item.ticker}
+    finally:
+        db.close()
+
+
+def get_portfolio_transactions(user_id: int, portfolio_item_id: Optional[int] = None, ticker: Optional[str] = None) -> List[PortfolioTransaction]:
+    """Get transaction history for a user, optionally filtered by item or ticker."""
+    db = SessionLocal()
+    try:
+        query = (
+            db.query(PortfolioTransaction)
+            .filter(PortfolioTransaction.user_id == user_id)
+        )
+        if portfolio_item_id is not None:
+            query = query.filter(PortfolioTransaction.portfolio_item_id == portfolio_item_id)
+        if ticker:
+            query = query.filter(PortfolioTransaction.ticker == ticker.upper())
+        return query.order_by(PortfolioTransaction.created_at.desc()).all()
+    finally:
+        db.close()
+
+
+def get_realized_pnl_total(user_id: int) -> float:
+    """Sum all realized P&L for a user."""
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func
+        result = (
+            db.query(func.coalesce(func.sum(PortfolioTransaction.realized_pnl), 0.0))
+            .filter(PortfolioTransaction.user_id == user_id, PortfolioTransaction.action == "SELL")
+            .scalar()
+        )
+        return round(float(result), 2)
+    finally:
+        db.close()
+
+
 # --- User Settings ---
 
 DEFAULT_SETTINGS = {
@@ -516,7 +647,7 @@ DEFAULT_SETTINGS = {
     },
     "visible_cards": {
         "total_value": True, "total_cost": True, "total_pnl": True,
-        "total_return": True, "day_pnl": True,
+        "total_return": True, "day_pnl": True, "realized_pnl": True,
     },
     "show_pie_chart": True,
 }
