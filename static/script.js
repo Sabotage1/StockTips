@@ -819,8 +819,20 @@ async function loadPortfolio() {
 async function refreshPortfolioPrices() {
     try {
         const resp = await fetch(`${API}/api/portfolio/refresh`);
-        if (!resp.ok) return;
-        portfolioData = await resp.json();
+        if (!resp.ok) {
+            // Fallback: try basic portfolio list if refresh fails
+            const fallback = await fetch(`${API}/api/portfolio`);
+            if (!fallback.ok) return;
+            const items = await fallback.json();
+            portfolioData = { items: items.map(function(it) {
+                return { id: it.id, ticker: it.ticker, company_name: it.company_name,
+                    shares: it.shares, purchase_price: it.purchase_price, stop_loss: it.stop_loss,
+                    current_price: null, market_value: null, pnl: null, pnl_pct: null,
+                    day_pnl: null, day_change_pct: null, pct_of_portfolio: null, signals: [] };
+            }), totals: {} };
+        } else {
+            portfolioData = await resp.json();
+        }
         renderPortfolioSummary(portfolioData);
         renderPortfolioTable(portfolioData.items);
         renderPortfolioPieChart(portfolioData.items);
@@ -983,7 +995,9 @@ function renderPortfolioTable(items) {
             '<td data-col="day_pnl" style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlColor + ';font-weight:600">' + dayPnl + '</td>' +
             '<td data-col="day_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayColor + ';font-weight:600">' + (dayChg || 'N/A') + '</td>' +
             '<td data-col="signals" style="max-width:200px">' + signalsHtml + '</td>' +
-            '<td data-col="actions" style="white-space:nowrap"><button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
+            '<td data-col="actions" style="white-space:nowrap">' +
+                '<button class="btn-pf-edit" onclick="openEditPortfolioItem(' + it.id + ',' + it.shares + ',' + it.purchase_price + ',' + (it.stop_loss || 0) + ',\'' + it.ticker + '\')" title="Edit">Edit</button> ' +
+                '<button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
                 '<button class="btn-delete-row" onclick="removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
             '</tr>';
     }).join('');
@@ -1025,6 +1039,98 @@ async function removePortfolioItem(id, ticker) {
         if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Delete failed'); return; }
         refreshPortfolioPrices();
     } catch (err) { alert('Error: ' + err.message); }
+}
+
+function openEditPortfolioItem(id, shares, price, stopLoss, ticker) {
+    var overlay = document.getElementById('editPfOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'editPfOverlay';
+        overlay.className = 'modal-overlay';
+        overlay.onclick = function(e) { if (e.target === overlay) closeEditPfModal(); };
+        document.body.appendChild(overlay);
+    }
+    overlay.innerHTML =
+        '<div class="modal" style="max-width:420px">' +
+            '<button class="modal-close" onclick="closeEditPfModal()">&times;</button>' +
+            '<div class="pf-modal-title">Edit ' + ticker + '</div>' +
+            '<div class="pf-modal-sub">Update shares, average cost, or stop loss</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Shares</label>' +
+                '<input type="number" id="editPfShares" class="pf-modal-input" value="' + shares + '" min="0" step="any">' +
+            '</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Average Cost ($)</label>' +
+                '<input type="number" id="editPfPrice" class="pf-modal-input" value="' + price.toFixed(2) + '" min="0" step="any">' +
+            '</div>' +
+            '<div class="pf-modal-field">' +
+                '<label class="pf-modal-label">Stop Loss ($)</label>' +
+                '<input type="number" id="editPfStopLoss" class="pf-modal-input" value="' + (stopLoss > 0 ? stopLoss.toFixed(2) : '') + '" min="0" step="any" placeholder="Optional">' +
+            '</div>' +
+            '<div class="pf-modal-error" id="editPfError"></div>' +
+            '<button class="pf-modal-btn" id="editPfSaveBtn" onclick="saveEditPortfolioItem(' + id + ',\'' + ticker + '\')">Save Changes</button>' +
+        '</div>';
+    overlay.classList.add('active');
+    document.getElementById('editPfShares').focus();
+}
+
+function closeEditPfModal() {
+    var overlay = document.getElementById('editPfOverlay');
+    if (overlay) overlay.classList.remove('active');
+}
+
+async function saveEditPortfolioItem(id, ticker) {
+    var sharesVal = parseFloat(document.getElementById('editPfShares').value);
+    var priceVal = parseFloat(document.getElementById('editPfPrice').value);
+    var stopLossVal = parseFloat(document.getElementById('editPfStopLoss').value);
+    var errorEl = document.getElementById('editPfError');
+    var btn = document.getElementById('editPfSaveBtn');
+
+    errorEl.style.display = 'none';
+    if (!sharesVal || sharesVal <= 0) {
+        errorEl.textContent = 'Please enter a valid number of shares';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (!priceVal || priceVal <= 0) {
+        errorEl.textContent = 'Please enter a valid average cost';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try {
+        var body = { shares: sharesVal, purchase_price: priceVal };
+        if (stopLossVal && stopLossVal > 0) body.stop_loss = stopLossVal;
+        var resp = await fetch(API + '/api/portfolio/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errorEl.textContent = data.error || 'Failed to save';
+            errorEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Save Changes';
+            return;
+        }
+        // Show success briefly
+        var overlay = document.getElementById('editPfOverlay');
+        overlay.querySelector('.modal').innerHTML =
+            '<div class="pf-modal-success">' +
+                '<div class="pf-modal-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+                '<div class="pf-modal-success-text">' + ticker + ' updated</div>' +
+            '</div>';
+        setTimeout(function() { closeEditPfModal(); }, 1000);
+        refreshPortfolioPrices();
+    } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Save Changes';
+    }
 }
 
 async function analyzePortfolioItem(id, ticker) {
