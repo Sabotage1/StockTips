@@ -164,22 +164,32 @@
             <div class="refresh-timer" id="refreshTimer">Next refresh: 60s</div>
         </div>
 
-        <div class="portfolio-summary" id="portfolioSummary">
-            <div class="stat-card">
-                <div class="stat-value" id="pfTotalValue">$0</div>
-                <div class="stat-label">Total Value</div>
+        <div class="portfolio-top-row">
+            <div class="portfolio-summary" id="portfolioSummary">
+                <div class="stat-card">
+                    <div class="stat-value" id="pfTotalValue">$0</div>
+                    <div class="stat-label">Total Value</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pfTotalCost">$0</div>
+                    <div class="stat-label">Total Cost</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pfTotalPnl">$0</div>
+                    <div class="stat-label">Total P&L</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pfTotalReturn">0%</div>
+                    <div class="stat-label">Return</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="pfTotalDayPnl">$0</div>
+                    <div class="stat-label">Day P&L</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="pfTotalCost">$0</div>
-                <div class="stat-label">Total Cost</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="pfTotalPnl">$0</div>
-                <div class="stat-label">Total P&L</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="pfTotalReturn">0%</div>
-                <div class="stat-label">Return</div>
+            <div class="portfolio-pie-wrap" id="portfolioPieWrap" style="display:none">
+                <canvas id="portfolioPieChart" width="220" height="220"></canvas>
+                <div class="pie-legend" id="pieLegend"></div>
             </div>
         </div>
 
@@ -203,14 +213,16 @@
                         <th>Avg Cost</th>
                         <th>Price</th>
                         <th>Mkt Value</th>
+                        <th>% Port</th>
                         <th>P&L</th>
                         <th>P&L %</th>
+                        <th>Day P&L</th>
                         <th>Signals</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="portfolioBody">
-                    <tr><td colspan="9" class="empty-row">No stocks in portfolio yet</td></tr>
+                    <tr><td colspan="11" class="empty-row">No stocks in portfolio yet</td></tr>
                 </tbody>
             </table>
         </div>

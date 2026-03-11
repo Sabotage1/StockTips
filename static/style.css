@@ -713,9 +713,37 @@ body {
 .market-dot.open { background: var(--green); box-shadow: 0 0 6px var(--green); }
 .refresh-timer { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
 
-.portfolio-summary {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+.portfolio-top-row {
+    display: flex; gap: 20px; align-items: flex-start;
     margin-bottom: 16px;
+}
+.portfolio-summary {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    flex: 1;
+}
+.portfolio-pie-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 16px 20px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-width: 260px;
+}
+.pie-legend {
+    display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center;
+    max-width: 260px;
+}
+.pie-legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.pie-legend-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.pie-legend-ticker {
+    font-family: 'JetBrains Mono', monospace; color: var(--text);
+}
+.pie-legend-pct {
+    color: var(--text3); font-family: 'JetBrains Mono', monospace;
 }
 
 .portfolio-add-form {
@@ -922,7 +950,9 @@ body {
     .share-page .chart-card { padding: 12px; }
     .share-page .analysis-card { padding: 16px; }
     .share-page .news-card { padding: 16px; }
+    .portfolio-top-row { flex-direction: column; }
     .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
+    .portfolio-pie-wrap { min-width: unset; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
     .portfolio-add-form { flex-direction: column; }
     .pf-input-ticker, .pf-input-num { width: 100%; }
     #portfolioTable { font-size: 12px; }

@@ -818,9 +818,71 @@ async function refreshPortfolioPrices() {
         portfolioData = await resp.json();
         renderPortfolioSummary(portfolioData);
         renderPortfolioTable(portfolioData.items);
+        renderPortfolioPieChart(portfolioData.items);
     } catch (err) {
         console.error('Portfolio refresh error:', err);
     }
+}
+
+var PIE_COLORS = [
+    '#7c6cf0', '#34d399', '#f59e0b', '#ef4444', '#60a5fa',
+    '#f472b6', '#a78bfa', '#2dd4a0', '#fb923c', '#38bdf8',
+    '#e879f9', '#4ade80', '#facc15', '#f87171', '#818cf8'
+];
+
+function renderPortfolioPieChart(items) {
+    var wrap = document.getElementById('portfolioPieWrap');
+    var canvas = document.getElementById('portfolioPieChart');
+    var legendEl = document.getElementById('pieLegend');
+    if (!wrap || !canvas || !legendEl) return;
+
+    var valid = (items || []).filter(function(it) { return it.market_value != null && it.market_value > 0; });
+    if (!valid.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'flex';
+
+    var total = valid.reduce(function(s, it) { return s + it.market_value; }, 0);
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var size = 220;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = size + 'px';
+    canvas.style.height = size + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    var cx = size / 2, cy = size / 2, r = 90, innerR = 55;
+    var startAngle = -Math.PI / 2;
+
+    ctx.clearRect(0, 0, size, size);
+
+    valid.forEach(function(it, i) {
+        var slice = (it.market_value / total) * Math.PI * 2;
+        var endAngle = startAngle + slice;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, startAngle, endAngle);
+        ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
+        ctx.closePath();
+        ctx.fillStyle = PIE_COLORS[i % PIE_COLORS.length];
+        ctx.fill();
+        startAngle = endAngle;
+    });
+
+    // Center text
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '600 14px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(valid.length + ' stock' + (valid.length !== 1 ? 's' : ''), cx, cy);
+
+    // Legend
+    legendEl.innerHTML = valid.map(function(it, i) {
+        var pct = (it.market_value / total * 100).toFixed(1);
+        return '<div class="pie-legend-item">' +
+            '<span class="pie-legend-dot" style="background:' + PIE_COLORS[i % PIE_COLORS.length] + '"></span>' +
+            '<span class="pie-legend-ticker">' + it.ticker + '</span>' +
+            '<span class="pie-legend-pct">' + pct + '%</span>' +
+            '</div>';
+    }).join('');
 }
 
 function startPortfolioRefresh() {
@@ -855,6 +917,7 @@ function renderPortfolioSummary(data) {
     const costEl = document.getElementById('pfTotalCost');
     const pnlEl = document.getElementById('pfTotalPnl');
     const retEl = document.getElementById('pfTotalReturn');
+    const dayPnlEl = document.getElementById('pfTotalDayPnl');
     if (valEl) valEl.textContent = '$' + (t.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (costEl) costEl.textContent = '$' + (t.total_cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
     if (pnlEl) {
@@ -867,13 +930,18 @@ function renderPortfolioSummary(data) {
         retEl.textContent = (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%';
         retEl.style.color = ret >= 0 ? 'var(--green)' : 'var(--red)';
     }
+    if (dayPnlEl) {
+        const dp = t.total_day_pnl || 0;
+        dayPnlEl.textContent = (dp >= 0 ? '+$' : '-$') + Math.abs(dp).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        dayPnlEl.style.color = dp >= 0 ? 'var(--green)' : 'var(--red)';
+    }
 }
 
 function renderPortfolioTable(items) {
     const tbody = document.getElementById('portfolioBody');
     if (!tbody) return;
     if (!items || !items.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="empty-row">No stocks in portfolio yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="empty-row">No stocks in portfolio yet</td></tr>';
         return;
     }
     tbody.innerHTML = items.map(function(it) {
@@ -884,6 +952,9 @@ function renderPortfolioTable(items) {
         const pnlColor = it.pnl != null ? (it.pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
         const dayChg = it.day_change_pct != null ? ((it.day_change_pct >= 0 ? '+' : '') + it.day_change_pct.toFixed(2) + '%') : '';
         const dayColor = it.day_change_pct != null ? (it.day_change_pct >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+        const portPct = it.pct_of_portfolio != null ? it.pct_of_portfolio.toFixed(1) + '%' : 'N/A';
+        const dayPnl = it.day_pnl != null ? ((it.day_pnl >= 0 ? '+$' : '-$') + Math.abs(it.day_pnl).toFixed(2)) : 'N/A';
+        const dayPnlColor = it.day_pnl != null ? (it.day_pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
 
         var signalsHtml = '';
         if (it.signals && it.signals.length) {
@@ -900,8 +971,10 @@ function renderPortfolioTable(items) {
             '<td style="font-family:\'JetBrains Mono\',monospace">' + price +
                 (dayChg ? '<br><span style="font-size:11px;color:' + dayColor + '">' + dayChg + '</span>' : '') + '</td>' +
             '<td style="font-family:\'JetBrains Mono\',monospace">' + mktVal + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2);font-weight:600">' + portPct + '</td>' +
             '<td style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + '">' + pnl + '</td>' +
             '<td style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + ';font-weight:600">' + pnlPct + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlColor + ';font-weight:600">' + dayPnl + '</td>' +
             '<td style="max-width:200px">' + signalsHtml + '</td>' +
             '<td style="white-space:nowrap"><button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
                 '<button class="btn-delete-row" onclick="removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +

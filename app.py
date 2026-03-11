@@ -861,6 +861,7 @@ async def api_portfolio_refresh(request: Request):
     enriched = []
     total_value = 0
     total_cost = 0
+    total_day_pnl = 0
     for it in items:
         sig = signals_map.get(it.ticker, {})
         cur_price = sig.get("current_price")
@@ -868,6 +869,11 @@ async def api_portfolio_refresh(request: Request):
         cost_basis = it.purchase_price * it.shares
         pnl = (market_value - cost_basis) if market_value else None
         pnl_pct = (pnl / cost_basis * 100) if pnl is not None and cost_basis else None
+
+        day_change = sig.get("day_change")
+        day_pnl = round(day_change * it.shares, 2) if day_change is not None else None
+        if day_pnl is not None:
+            total_day_pnl += day_pnl
 
         if market_value:
             total_value += market_value
@@ -882,13 +888,21 @@ async def api_portfolio_refresh(request: Request):
             "stop_loss": it.stop_loss,
             "notes": it.notes,
             "current_price": cur_price,
-            "day_change": sig.get("day_change"),
+            "day_change": day_change,
             "day_change_pct": sig.get("day_change_pct"),
+            "day_pnl": day_pnl,
             "market_value": round(market_value, 2) if market_value else None,
             "pnl": round(pnl, 2) if pnl is not None else None,
             "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
             "signals": sig.get("signals", []),
         })
+
+    # Compute % of portfolio for each item
+    for item in enriched:
+        if total_value > 0 and item["market_value"] is not None:
+            item["pct_of_portfolio"] = round(item["market_value"] / total_value * 100, 2)
+        else:
+            item["pct_of_portfolio"] = None
 
     total_pnl = total_value - total_cost if total_value else None
     total_return_pct = (total_pnl / total_cost * 100) if total_pnl is not None and total_cost else None
@@ -900,6 +914,7 @@ async def api_portfolio_refresh(request: Request):
             "total_cost": round(total_cost, 2),
             "total_pnl": round(total_pnl, 2) if total_pnl is not None else None,
             "total_return_pct": round(total_return_pct, 2) if total_return_pct is not None else None,
+            "total_day_pnl": round(total_day_pnl, 2),
         },
     })
 
