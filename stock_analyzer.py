@@ -797,12 +797,14 @@ async def analyze_stock(ticker: str, purchase_price=None) -> dict:
             "cached_id": cached.id,
         }
 
-    stock_data = get_stock_data(ticker)
+    import asyncio as _asyncio
+    _loop = _asyncio.get_event_loop()
+    stock_data = await _loop.run_in_executor(None, get_stock_data, ticker)
     company_name = stock_data.get("company_name", ticker)
     news_articles = await fetch_all_news(ticker, company_name)
 
     # Generate AI news digest (non-critical — analysis works without it)
-    news_digest = generate_news_digest(news_articles)
+    news_digest = await _loop.run_in_executor(None, generate_news_digest, news_articles)
 
     # Build the analysis prompt
     news_text = ""
@@ -978,31 +980,34 @@ Respond ONLY with valid JSON.""".format(
                 pass
         return None
 
-    analysis = None
-    last_response_text = ""
-    last_error = ""
-    for model_key, model_instance in _GEMINI_MODELS:
-        try:
-            response = model_instance.generate_content(user_prompt, generation_config=gen_config)
-            track(model_key)
-            resp_text = response.text
-            if resp_text:
-                last_response_text = resp_text
-            parsed = _extract_json(resp_text)
-            if parsed is not None:
-                analysis = parsed
-                break  # success
-            # Parse failed — log and try next model
-            print("Gemini {} returned unparseable response for {}: {}".format(
-                model_key, ticker.upper(), (resp_text or "")[:200]))
-            last_error = "JSON parse failed"
-            continue
-        except Exception as e:
-            err_str = str(e)
-            print("Gemini {} error for {}: {}".format(model_key, ticker.upper(), err_str[:200]))
-            last_error = err_str
-            # Always try next model regardless of error type
-            continue
+    def _run_gemini_models():
+        """Run Gemini model fallback chain (blocking). Called via executor."""
+        _analysis = None
+        _last_response_text = ""
+        _last_error = ""
+        for model_key, model_instance in _GEMINI_MODELS:
+            try:
+                response = model_instance.generate_content(user_prompt, generation_config=gen_config)
+                track(model_key)
+                resp_text = response.text
+                if resp_text:
+                    _last_response_text = resp_text
+                parsed = _extract_json(resp_text)
+                if parsed is not None:
+                    _analysis = parsed
+                    break  # success
+                print("Gemini {} returned unparseable response for {}: {}".format(
+                    model_key, ticker.upper(), (resp_text or "")[:200]))
+                _last_error = "JSON parse failed"
+                continue
+            except Exception as e:
+                err_str = str(e)
+                print("Gemini {} error for {}: {}".format(model_key, ticker.upper(), err_str[:200]))
+                _last_error = err_str
+                continue
+        return _analysis, _last_response_text, _last_error
+
+    analysis, last_response_text, last_error = await _loop.run_in_executor(None, _run_gemini_models)
 
     # All models exhausted
     if analysis is None:
