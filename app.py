@@ -21,9 +21,10 @@ from database import (
     get_analysis_by_share_token, get_unique_tickers, delete_analysis,
     delete_all_history, block_user, unblock_user, is_user_blocked,
     get_blocked_users, get_user_by_username, get_all_users, create_user,
-    delete_user,
+    delete_user, get_user_portfolio, add_portfolio_item,
+    update_portfolio_item, delete_portfolio_item,
 )
-from stock_analyzer import analyze_stock
+from stock_analyzer import analyze_stock, get_quick_signals_batch
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
 from api_tracker import get_usage
@@ -703,6 +704,306 @@ async def api_delete_user(request: Request, user_id: int):
     if not deleted:
         return JSONResponse({"error": "User not found"}, status_code=404)
     return JSONResponse({"ok": True, "deleted_id": user_id})
+
+
+# --- Portfolio API ---
+
+def _get_current_user_id(request: Request):
+    """Return the logged-in user's DB id, or None."""
+    session = _get_session(request)
+    if not session:
+        return None
+    user = get_user_by_username(session["user"])
+    return user.id if user else None
+
+
+@app.get("/api/portfolio")
+async def api_portfolio_list(request: Request):
+    """List the current user's portfolio items."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    items = get_user_portfolio(user_id)
+    return JSONResponse([
+        {
+            "id": it.id,
+            "ticker": it.ticker,
+            "company_name": it.company_name,
+            "shares": it.shares,
+            "purchase_price": it.purchase_price,
+            "stop_loss": it.stop_loss,
+            "notes": it.notes,
+            "added_at": it.added_at.isoformat() if it.added_at else "",
+        }
+        for it in items
+    ])
+
+
+@app.post("/api/portfolio")
+async def api_portfolio_add(request: Request):
+    """Add a stock to the user's portfolio."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    ticker = body.get("ticker", "").strip().upper()
+    if not ticker or len(ticker) > 10:
+        return JSONResponse({"error": "Invalid ticker"}, status_code=400)
+    try:
+        shares = float(body.get("shares", 0))
+        purchase_price = float(body.get("purchase_price", 0))
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "Invalid shares or price"}, status_code=400)
+    if shares <= 0 or purchase_price <= 0:
+        return JSONResponse({"error": "Shares and price must be positive"}, status_code=400)
+    stop_loss = None
+    if body.get("stop_loss"):
+        try:
+            stop_loss = float(body["stop_loss"])
+            if stop_loss <= 0:
+                stop_loss = None
+        except (ValueError, TypeError):
+            pass
+    try:
+        item = add_portfolio_item(
+            user_id=user_id,
+            ticker=ticker,
+            shares=shares,
+            purchase_price=purchase_price,
+            company_name=body.get("company_name", ""),
+            stop_loss=stop_loss,
+            notes=body.get("notes", ""),
+        )
+        return JSONResponse({
+            "ok": True,
+            "item": {
+                "id": item.id,
+                "ticker": item.ticker,
+                "company_name": item.company_name,
+                "shares": item.shares,
+                "purchase_price": item.purchase_price,
+                "stop_loss": item.stop_loss,
+                "notes": item.notes,
+                "added_at": item.added_at.isoformat() if item.added_at else "",
+            },
+        })
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+
+
+@app.put("/api/portfolio/{item_id}")
+async def api_portfolio_update(request: Request, item_id: int):
+    """Update a portfolio item (shares, price, stop_loss, notes)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    kwargs = {}
+    for key in ("shares", "purchase_price", "stop_loss"):
+        if key in body and body[key] is not None:
+            try:
+                kwargs[key] = float(body[key])
+            except (ValueError, TypeError):
+                pass
+    if "notes" in body:
+        kwargs["notes"] = str(body["notes"])
+    item = update_portfolio_item(item_id, user_id, **kwargs)
+    if not item:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse({
+        "ok": True,
+        "item": {
+            "id": item.id,
+            "ticker": item.ticker,
+            "shares": item.shares,
+            "purchase_price": item.purchase_price,
+            "stop_loss": item.stop_loss,
+            "notes": item.notes,
+        },
+    })
+
+
+@app.delete("/api/portfolio/{item_id}")
+async def api_portfolio_delete(request: Request, item_id: int):
+    """Remove a stock from the user's portfolio."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    deleted = delete_portfolio_item(item_id, user_id)
+    if not deleted:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse({"ok": True, "deleted_id": item_id})
+
+
+@app.get("/api/portfolio/refresh")
+async def api_portfolio_refresh(request: Request):
+    """Fetch live prices + quick signals for all portfolio stocks."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    items = get_user_portfolio(user_id)
+    if not items:
+        return JSONResponse({"items": [], "totals": {}})
+
+    batch_input = [
+        {"ticker": it.ticker, "purchase_price": it.purchase_price, "stop_loss": it.stop_loss}
+        for it in items
+    ]
+    # Run sync Yahoo calls in executor to avoid blocking
+    loop = asyncio.get_event_loop()
+    signals_map = await loop.run_in_executor(None, get_quick_signals_batch, batch_input)
+
+    enriched = []
+    total_value = 0
+    total_cost = 0
+    for it in items:
+        sig = signals_map.get(it.ticker, {})
+        cur_price = sig.get("current_price")
+        market_value = cur_price * it.shares if cur_price else None
+        cost_basis = it.purchase_price * it.shares
+        pnl = (market_value - cost_basis) if market_value else None
+        pnl_pct = (pnl / cost_basis * 100) if pnl is not None and cost_basis else None
+
+        if market_value:
+            total_value += market_value
+        total_cost += cost_basis
+
+        enriched.append({
+            "id": it.id,
+            "ticker": it.ticker,
+            "company_name": it.company_name,
+            "shares": it.shares,
+            "purchase_price": it.purchase_price,
+            "stop_loss": it.stop_loss,
+            "notes": it.notes,
+            "current_price": cur_price,
+            "day_change": sig.get("day_change"),
+            "day_change_pct": sig.get("day_change_pct"),
+            "market_value": round(market_value, 2) if market_value else None,
+            "pnl": round(pnl, 2) if pnl is not None else None,
+            "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
+            "signals": sig.get("signals", []),
+        })
+
+    total_pnl = total_value - total_cost if total_value else None
+    total_return_pct = (total_pnl / total_cost * 100) if total_pnl is not None and total_cost else None
+
+    return JSONResponse({
+        "items": enriched,
+        "totals": {
+            "total_value": round(total_value, 2),
+            "total_cost": round(total_cost, 2),
+            "total_pnl": round(total_pnl, 2) if total_pnl is not None else None,
+            "total_return_pct": round(total_return_pct, 2) if total_return_pct is not None else None,
+        },
+    })
+
+
+@app.post("/api/portfolio/{item_id}/analyze")
+async def api_portfolio_analyze(request: Request, item_id: int):
+    """Full AI re-analysis for a portfolio stock, using purchase_price context."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    items = get_user_portfolio(user_id)
+    item = None
+    for it in items:
+        if it.id == item_id:
+            item = it
+            break
+    if not item:
+        return JSONResponse({"error": "Portfolio item not found"}, status_code=404)
+
+    try:
+        result = await analyze_stock(item.ticker, purchase_price=item.purchase_price)
+        analysis = result["analysis"]
+
+        session = _get_session(request)
+        web_user = session["user"] if session else ""
+
+        # Check for error results
+        _error_markers = ["parsing failed", "error analyzing", "quota exhausted",
+                          "an error occurred", "analysis failed"]
+        _summary_lower = analysis.get("short_summary", "").lower()
+        is_error = analysis.get("confidence") == "LOW" and any(
+            m in _summary_lower for m in _error_markers
+        )
+        if is_error:
+            return JSONResponse({
+                "error": analysis.get("short_summary", "Analysis failed"),
+                "full_analysis": analysis.get("full_analysis", ""),
+            }, status_code=502)
+
+        record = save_analysis(
+            ticker=result["ticker"],
+            company_name=result["company_name"],
+            current_price=result.get("current_price"),
+            recommendation=analysis["recommendation"],
+            confidence=analysis["confidence"],
+            short_summary=analysis["short_summary"],
+            full_analysis=analysis.get("full_analysis", ""),
+            news_data=json.dumps(result["news_articles"][:10], default=str),
+            stock_data=json.dumps(result["stock_data"], default=str),
+            analysis_json=json.dumps(analysis, default=str),
+            source="web",
+            web_user=web_user,
+        )
+
+        # Auto-update stop_loss if analysis provides one
+        stop_str = analysis.get("stop_loss", "")
+        if stop_str and stop_str != "N/A":
+            import re
+            match = re.search(r'\$?([\d,.]+)', stop_str)
+            if match:
+                try:
+                    new_sl = float(match.group(1).replace(",", ""))
+                    if new_sl > 0:
+                        update_portfolio_item(item.id, user_id, stop_loss=new_sl)
+                except (ValueError, TypeError):
+                    pass
+
+        return JSONResponse({
+            "id": record.id,
+            "share_token": record.share_token,
+            "ticker": result["ticker"],
+            "company_name": result["company_name"],
+            "current_price": result.get("current_price"),
+            "recommendation": analysis["recommendation"],
+            "confidence": analysis["confidence"],
+            "short_summary": analysis["short_summary"],
+            "full_analysis": analysis.get("full_analysis", ""),
+            "key_factors": analysis.get("key_factors", []),
+            "risk_level": analysis.get("risk_level", ""),
+            "price_target_short": analysis.get("price_target_short", ""),
+            "price_target_long": analysis.get("price_target_long", ""),
+            "stop_loss": analysis.get("stop_loss", ""),
+            "chart_pattern": analysis.get("chart_pattern", ""),
+            "trend_status": analysis.get("trend_status", ""),
+            "support_levels": analysis.get("support_levels", []),
+            "resistance_levels": analysis.get("resistance_levels", []),
+            "breakout_level": analysis.get("breakout_level", ""),
+            "breakout_direction": analysis.get("breakout_direction", ""),
+            "expected_gain_pct": analysis.get("expected_gain_pct", ""),
+            "expected_loss_pct": analysis.get("expected_loss_pct", ""),
+            "risk_reward_ratio": analysis.get("risk_reward_ratio", ""),
+            "action_trigger": analysis.get("action_trigger", ""),
+            "breakout_timeframe": analysis.get("breakout_timeframe", ""),
+            "news_digest": result.get("news_digest"),
+            "purchase_price": item.purchase_price,
+            "news_count": len(result["news_articles"]),
+            "news_articles": result["news_articles"][:10],
+            "stock_data": result["stock_data"],
+            "created_at": record.created_at.isoformat(),
+        })
+    except Exception as e:
+        logger.error("Portfolio analysis error for {}: {}".format(item.ticker, e))
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 if __name__ == "__main__":

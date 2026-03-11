@@ -2,6 +2,11 @@ const API = '';
 let currentPanel = 'analyze';
 let currentUserRole = 'viewer';
 
+// Portfolio state
+let portfolioRefreshTimer = null;
+let portfolioRefreshCountdown = 60;
+let portfolioData = null;
+
 const tickerInput = document.getElementById('tickerInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const loadingEl = document.getElementById('loading');
@@ -20,9 +25,12 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         currentPanel = btn.dataset.panel;
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.getElementById(`panel-${currentPanel}`).classList.add('active');
+        // Stop portfolio refresh when leaving that tab
+        if (currentPanel !== 'portfolio') stopPortfolioRefresh();
         if (currentPanel === 'history') loadHistory();
         if (currentPanel === 'usage') loadUsage();
         if (currentPanel === 'users') loadUsers();
+        if (currentPanel === 'portfolio') loadPortfolio();
     });
 });
 
@@ -240,6 +248,7 @@ function renderResult(data) {
                 <span class="badge ${riskClass}">${data.risk_level || 'N/A'} risk</span>
                 ${data.trend_status ? `<span class="badge badge-info">${data.trend_status}</span>` : ''}
                 ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
+                <button class="btn-add-portfolio" onclick="showAddToPortfolioFromAnalysis('${data.ticker}', '${(data.company_name || '').replace(/'/g, "\\'")}', ${data.current_price || 0})">+ Portfolio</button>
             </div>
             ${patternHtml}
             <div class="result-summary">${data.short_summary}</div>
@@ -731,6 +740,212 @@ async function deleteUserAccount(id, username) {
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Delete failed'); }
         loadUsers();
     } catch (err) { alert(`Error: ${err.message}`); }
+}
+
+// --- Portfolio ---
+
+function isMarketOpen() {
+    const now = new Date();
+    // Convert to EST (UTC-5) / EDT (UTC-4)
+    const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const day = est.getDay(); // 0=Sun, 6=Sat
+    const hours = est.getHours();
+    const mins = est.getMinutes();
+    const time = hours * 60 + mins;
+    return day >= 1 && day <= 5 && time >= 570 && time < 960; // 9:30-16:00
+}
+
+function updateMarketStatus() {
+    const dot = document.getElementById('marketDot');
+    const text = document.getElementById('marketStatusText');
+    if (!dot || !text) return;
+    if (isMarketOpen()) {
+        dot.classList.add('open');
+        text.textContent = 'Market Open';
+    } else {
+        dot.classList.remove('open');
+        text.textContent = 'Market Closed';
+    }
+}
+
+async function loadPortfolio() {
+    updateMarketStatus();
+    await refreshPortfolioPrices();
+    startPortfolioRefresh();
+}
+
+async function refreshPortfolioPrices() {
+    try {
+        const resp = await fetch(`${API}/api/portfolio/refresh`);
+        if (!resp.ok) return;
+        portfolioData = await resp.json();
+        renderPortfolioSummary(portfolioData);
+        renderPortfolioTable(portfolioData.items);
+    } catch (err) {
+        console.error('Portfolio refresh error:', err);
+    }
+}
+
+function startPortfolioRefresh() {
+    stopPortfolioRefresh();
+    portfolioRefreshCountdown = 60;
+    portfolioRefreshTimer = setInterval(function() {
+        portfolioRefreshCountdown--;
+        const timerEl = document.getElementById('refreshTimer');
+        if (timerEl) timerEl.textContent = 'Next refresh: ' + portfolioRefreshCountdown + 's';
+        if (portfolioRefreshCountdown <= 0) {
+            portfolioRefreshCountdown = 60;
+            updateMarketStatus();
+            refreshPortfolioPrices();
+        }
+    }, 1000);
+}
+
+function stopPortfolioRefresh() {
+    if (portfolioRefreshTimer) {
+        clearInterval(portfolioRefreshTimer);
+        portfolioRefreshTimer = null;
+    }
+}
+
+function renderPortfolioSummary(data) {
+    const t = data.totals || {};
+    const valEl = document.getElementById('pfTotalValue');
+    const costEl = document.getElementById('pfTotalCost');
+    const pnlEl = document.getElementById('pfTotalPnl');
+    const retEl = document.getElementById('pfTotalReturn');
+    if (valEl) valEl.textContent = '$' + (t.total_value || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (costEl) costEl.textContent = '$' + (t.total_cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    if (pnlEl) {
+        const pnl = t.total_pnl || 0;
+        pnlEl.textContent = (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        pnlEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+    if (retEl) {
+        const ret = t.total_return_pct || 0;
+        retEl.textContent = (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%';
+        retEl.style.color = ret >= 0 ? 'var(--green)' : 'var(--red)';
+    }
+}
+
+function renderPortfolioTable(items) {
+    const tbody = document.getElementById('portfolioBody');
+    if (!tbody) return;
+    if (!items || !items.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-row">No stocks in portfolio yet</td></tr>';
+        return;
+    }
+    tbody.innerHTML = items.map(function(it) {
+        const price = it.current_price != null ? '$' + it.current_price.toFixed(2) : 'N/A';
+        const mktVal = it.market_value != null ? '$' + it.market_value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A';
+        const pnl = it.pnl != null ? ((it.pnl >= 0 ? '+$' : '-$') + Math.abs(it.pnl).toFixed(2)) : 'N/A';
+        const pnlPct = it.pnl_pct != null ? ((it.pnl_pct >= 0 ? '+' : '') + it.pnl_pct.toFixed(2) + '%') : 'N/A';
+        const pnlColor = it.pnl != null ? (it.pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+        const dayChg = it.day_change_pct != null ? ((it.day_change_pct >= 0 ? '+' : '') + it.day_change_pct.toFixed(2) + '%') : '';
+        const dayColor = it.day_change_pct != null ? (it.day_change_pct >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+
+        var signalsHtml = '';
+        if (it.signals && it.signals.length) {
+            signalsHtml = it.signals.map(function(s) {
+                return '<span class="signal-badge signal-' + s.color + '">' + s.text + '</span>';
+            }).join('');
+        }
+
+        return '<tr>' +
+            '<td><strong style="font-family:\'JetBrains Mono\',monospace">' + it.ticker + '</strong>' +
+                (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace">$' + it.purchase_price.toFixed(2) + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace">' + price +
+                (dayChg ? '<br><span style="font-size:11px;color:' + dayColor + '">' + dayChg + '</span>' : '') + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace">' + mktVal + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + '">' + pnl + '</td>' +
+            '<td style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + ';font-weight:600">' + pnlPct + '</td>' +
+            '<td style="max-width:200px">' + signalsHtml + '</td>' +
+            '<td style="white-space:nowrap"><button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
+                '<button class="btn-delete-row" onclick="removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
+            '</tr>';
+    }).join('');
+}
+
+async function addStockToPortfolio() {
+    var ticker = document.getElementById('pfTicker').value.trim().toUpperCase();
+    var shares = parseFloat(document.getElementById('pfShares').value);
+    var price = parseFloat(document.getElementById('pfPrice').value);
+    var stopLoss = parseFloat(document.getElementById('pfStopLoss').value);
+
+    if (!ticker) { alert('Enter a ticker symbol'); return; }
+    if (!shares || shares <= 0) { alert('Enter valid number of shares'); return; }
+    if (!price || price <= 0) { alert('Enter valid average cost'); return; }
+
+    var body = { ticker: ticker, shares: shares, purchase_price: price };
+    if (stopLoss && stopLoss > 0) body.stop_loss = stopLoss;
+
+    try {
+        var resp = await fetch(API + '/api/portfolio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        var data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to add'); return; }
+        document.getElementById('pfTicker').value = '';
+        document.getElementById('pfShares').value = '';
+        document.getElementById('pfPrice').value = '';
+        document.getElementById('pfStopLoss').value = '';
+        refreshPortfolioPrices();
+    } catch (err) { alert('Error: ' + err.message); }
+}
+
+async function removePortfolioItem(id, ticker) {
+    if (!confirm('Remove ' + ticker + ' from portfolio?')) return;
+    try {
+        var resp = await fetch(API + '/api/portfolio/' + id, { method: 'DELETE' });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Delete failed'); return; }
+        refreshPortfolioPrices();
+    } catch (err) { alert('Error: ' + err.message); }
+}
+
+async function analyzePortfolioItem(id, ticker) {
+    try {
+        // Show loading in modal
+        modalContent.innerHTML = '<div style="text-align:center;padding:40px"><div class="pulse-ring"></div><p style="margin-top:16px;color:var(--text2)">Analyzing ' + ticker + '...</p></div>';
+        modalOverlay.classList.add('active');
+
+        var resp = await fetch(API + '/api/portfolio/' + id + '/analyze', { method: 'POST' });
+        if (!resp.ok) { var err = await resp.json(); throw new Error(err.error || 'Analysis failed'); }
+        var data = await resp.json();
+        // Reuse showDetail to render in modal by calling the analysis detail endpoint
+        modalOverlay.classList.remove('active');
+        showDetail(data.id);
+        // Refresh portfolio to pick up updated stop_loss
+        refreshPortfolioPrices();
+    } catch (err) {
+        modalContent.innerHTML = '<p style="color:var(--red);padding:20px">Error: ' + err.message + '</p>';
+    }
+}
+
+function showAddToPortfolioFromAnalysis(ticker, company, price) {
+    var sharesStr = prompt('Add ' + ticker + ' to portfolio.\n\nHow many shares?', '10');
+    if (sharesStr === null) return;
+    var shares = parseFloat(sharesStr);
+    if (!shares || shares <= 0) { alert('Invalid number of shares'); return; }
+
+    var priceStr = prompt('Average cost per share?', price > 0 ? price.toFixed(2) : '');
+    if (priceStr === null) return;
+    var avgCost = parseFloat(priceStr);
+    if (!avgCost || avgCost <= 0) { alert('Invalid price'); return; }
+
+    fetch(API + '/api/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, shares: shares, purchase_price: avgCost, company_name: company }),
+    }).then(function(resp) {
+        return resp.json().then(function(data) {
+            if (!resp.ok) { alert(data.error || 'Failed to add'); return; }
+            alert(ticker + ' added to your portfolio!');
+        });
+    }).catch(function(err) { alert('Error: ' + err.message); });
 }
 
 fetchCurrentUser();

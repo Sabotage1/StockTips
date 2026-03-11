@@ -36,6 +36,10 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 History
             </button>
+            <button class="nav-btn" data-panel="portfolio">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><path d="M12 4v6"/></svg>
+                Portfolio
+            </button>
             <button class="nav-btn" data-panel="usage" id="navUsage" style="display:none">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="2" width="4" height="19" rx="1"/></svg>
                 API Usage
@@ -145,6 +149,68 @@
                 </thead>
                 <tbody id="historyBody">
                     <tr><td colspan="8" class="empty-row">No analysis history yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- PORTFOLIO PANEL -->
+    <div id="panel-portfolio" class="panel">
+        <div class="portfolio-status-bar">
+            <div class="market-status">
+                <span class="market-dot" id="marketDot"></span>
+                <span id="marketStatusText">Market Closed</span>
+            </div>
+            <div class="refresh-timer" id="refreshTimer">Next refresh: 60s</div>
+        </div>
+
+        <div class="portfolio-summary" id="portfolioSummary">
+            <div class="stat-card">
+                <div class="stat-value" id="pfTotalValue">$0</div>
+                <div class="stat-label">Total Value</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pfTotalCost">$0</div>
+                <div class="stat-label">Total Cost</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pfTotalPnl">$0</div>
+                <div class="stat-label">Total P&L</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pfTotalReturn">0%</div>
+                <div class="stat-label">Return</div>
+            </div>
+        </div>
+
+        <div class="portfolio-add-form">
+            <input type="text" id="pfTicker" placeholder="Ticker" maxlength="10" class="filter-input pf-input-ticker" spellcheck="false" autocomplete="off">
+            <input type="number" id="pfShares" placeholder="Shares" class="filter-input pf-input-num" min="0" step="any">
+            <input type="number" id="pfPrice" placeholder="Avg Cost $" class="filter-input pf-input-num" min="0" step="any">
+            <input type="number" id="pfStopLoss" placeholder="Stop Loss $" class="filter-input pf-input-num" min="0" step="any">
+            <button class="btn-go pf-add-btn" onclick="addStockToPortfolio()">
+                <span class="btn-text">Add</span>
+                <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+        </div>
+
+        <div class="table-wrap" id="portfolioTableWrap">
+            <table class="history-table" id="portfolioTable">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Shares</th>
+                        <th>Avg Cost</th>
+                        <th>Price</th>
+                        <th>Mkt Value</th>
+                        <th>P&L</th>
+                        <th>P&L %</th>
+                        <th>Signals</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="portfolioBody">
+                    <tr><td colspan="9" class="empty-row">No stocks in portfolio yet</td></tr>
                 </tbody>
             </table>
         </div>

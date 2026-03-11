@@ -323,6 +323,109 @@ def _get_price_history(ticker):
         return None
 
 
+def get_quick_signals(ticker, purchase_price, stop_loss=None):
+    """Lightweight signals using only Yahoo Chart API (no Finviz/Alpha Vantage/Gemini).
+
+    Returns dict with current_price, day_change, SMAs, ATR, volume_ratio, and
+    color-coded signal alerts (green/yellow/red/blue).
+    """
+    history = _get_price_history(ticker)
+    if not history or not history["closes"] or len(history["closes"]) < 2:
+        return {"ticker": ticker.upper(), "error": "No price data available"}
+
+    closes = history["closes"]
+    highs = history["highs"]
+    lows = history["lows"]
+    volumes = history["volumes"]
+
+    current_price = history["current_price"] or closes[-1]
+    previous_close = closes[-2] if len(closes) >= 2 else current_price
+    day_change = round(current_price - previous_close, 2)
+    day_change_pct = round((day_change / previous_close) * 100, 2) if previous_close else 0
+
+    sma_20 = _compute_sma(closes, 20)
+    sma_50 = _compute_sma(closes, 50)
+    sma_200 = _compute_sma(closes, 200)
+    atr_14 = _compute_atr(highs, lows, closes, 14)
+
+    # Volume ratio (today vs 10-day avg)
+    volume_ratio = None
+    if len(volumes) >= 11 and volumes[-1]:
+        avg_10 = sum(volumes[-11:-1]) / 10 if sum(volumes[-11:-1]) > 0 else 1
+        volume_ratio = round(volumes[-1] / avg_10, 2)
+
+    signals = []
+
+    # --- Green signals (bullish) ---
+    if sma_20 and sma_50 and sma_200:
+        if current_price > sma_20 and current_price > sma_50 and current_price > sma_200:
+            signals.append({"color": "green", "text": "Above all SMAs - strong trend"})
+    if sma_200 and current_price > sma_200:
+        if sma_20 and current_price > sma_20:
+            pass  # already covered
+        elif sma_200:
+            signals.append({"color": "green", "text": "Above SMA 200 - bullish regime"})
+    if purchase_price and current_price > purchase_price * 1.15:
+        signals.append({"color": "green", "text": "Consider taking partial profits (+{:.1f}%)".format(
+            (current_price - purchase_price) / purchase_price * 100)})
+
+    # --- Yellow signals (caution) ---
+    if sma_20 and current_price < sma_20:
+        signals.append({"color": "yellow", "text": "Price below SMA 20 - weakening"})
+    elif sma_20 and current_price < sma_20 * 1.02:
+        signals.append({"color": "yellow", "text": "Testing SMA 20 support"})
+    if stop_loss and current_price < stop_loss * 1.05 and current_price > stop_loss:
+        signals.append({"color": "yellow", "text": "Within 5% of stop-loss"})
+
+    # --- Red signals (danger) ---
+    if stop_loss and current_price <= stop_loss:
+        signals.append({"color": "red", "text": "BELOW stop-loss ${:.2f}".format(stop_loss)})
+    elif stop_loss and current_price < stop_loss * 1.02:
+        signals.append({"color": "red", "text": "Approaching stop-loss"})
+    if sma_200 and current_price < sma_200:
+        signals.append({"color": "red", "text": "Below SMA 200 - bearish"})
+    if purchase_price and current_price < purchase_price * 0.85:
+        signals.append({"color": "red", "text": "Significant loss - review position ({:.1f}%)".format(
+            (current_price - purchase_price) / purchase_price * 100)})
+
+    # --- Blue signals (informational) ---
+    if volume_ratio and volume_ratio >= 2.0:
+        signals.append({"color": "blue", "text": "Volume spike detected ({:.1f}x avg)".format(volume_ratio)})
+    elif volume_ratio and volume_ratio >= 1.5:
+        signals.append({"color": "blue", "text": "Above-average volume ({:.1f}x)".format(volume_ratio)})
+
+    return {
+        "ticker": ticker.upper(),
+        "current_price": current_price,
+        "previous_close": previous_close,
+        "day_change": day_change,
+        "day_change_pct": day_change_pct,
+        "sma_20": sma_20,
+        "sma_50": sma_50,
+        "sma_200": sma_200,
+        "atr_14": atr_14,
+        "volume_ratio": volume_ratio,
+        "signals": signals,
+    }
+
+
+def get_quick_signals_batch(items):
+    """Fetch quick signals for a list of portfolio items.
+
+    items: list of dicts with 'ticker', 'purchase_price', and optional 'stop_loss'.
+    Returns dict keyed by ticker.
+    """
+    results = {}
+    for item in items:
+        ticker = item["ticker"]
+        results[ticker] = get_quick_signals(
+            ticker,
+            item["purchase_price"],
+            stop_loss=item.get("stop_loss"),
+        )
+    return results
+
+
 def get_stock_data(ticker: str) -> dict:
     """Fetch stock data from multiple sources with SMA/ATR computation."""
     result = {

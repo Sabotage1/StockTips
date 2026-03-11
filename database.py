@@ -1,7 +1,7 @@
 import datetime
 import uuid
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from config import DATABASE_URL
@@ -62,6 +62,22 @@ class WatchlistItem(Base):
     ticker = Column(String(20), unique=True, index=True, nullable=False)
     added_at = Column(DateTime, default=datetime.datetime.utcnow)
     notes = Column(Text, default="")
+
+
+class PortfolioItem(Base):
+    __tablename__ = "portfolio_items"
+    __table_args__ = (UniqueConstraint("user_id", "ticker", name="uq_user_ticker"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    ticker = Column(String(20), nullable=False)
+    company_name = Column(String(200), default="")
+    shares = Column(Float, nullable=False)
+    purchase_price = Column(Float, nullable=False)
+    purchase_date = Column(String(20), default="")
+    stop_loss = Column(Float, nullable=True)
+    notes = Column(Text, default="")
+    added_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 def init_db():
@@ -367,6 +383,109 @@ def delete_user(user_id: int) -> bool:
         if not user:
             return False
         db.delete(user)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+# --- Portfolio ---
+
+def get_user_portfolio(user_id: int) -> List[PortfolioItem]:
+    """Return all portfolio items for a user, ordered by most recently added."""
+    db = SessionLocal()
+    try:
+        return (
+            db.query(PortfolioItem)
+            .filter(PortfolioItem.user_id == user_id)
+            .order_by(PortfolioItem.added_at.desc())
+            .all()
+        )
+    finally:
+        db.close()
+
+
+def add_portfolio_item(
+    user_id: int,
+    ticker: str,
+    shares: float,
+    purchase_price: float,
+    company_name: str = "",
+    stop_loss: Optional[float] = None,
+    notes: str = "",
+) -> PortfolioItem:
+    """Add a stock to the user's portfolio. Raises ValueError if duplicate."""
+    db = SessionLocal()
+    try:
+        existing = (
+            db.query(PortfolioItem)
+            .filter(PortfolioItem.user_id == user_id, PortfolioItem.ticker == ticker.upper())
+            .first()
+        )
+        if existing:
+            raise ValueError("Ticker {} is already in your portfolio".format(ticker.upper()))
+        item = PortfolioItem(
+            user_id=user_id,
+            ticker=ticker.upper(),
+            company_name=company_name,
+            shares=shares,
+            purchase_price=purchase_price,
+            stop_loss=stop_loss,
+            notes=notes,
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        return item
+    finally:
+        db.close()
+
+
+def update_portfolio_item(
+    item_id: int,
+    user_id: int,
+    shares: Optional[float] = None,
+    purchase_price: Optional[float] = None,
+    stop_loss: Optional[float] = None,
+    notes: Optional[str] = None,
+) -> Optional[PortfolioItem]:
+    """Partial update of a portfolio item. Returns updated item or None."""
+    db = SessionLocal()
+    try:
+        item = (
+            db.query(PortfolioItem)
+            .filter(PortfolioItem.id == item_id, PortfolioItem.user_id == user_id)
+            .first()
+        )
+        if not item:
+            return None
+        if shares is not None:
+            item.shares = shares
+        if purchase_price is not None:
+            item.purchase_price = purchase_price
+        if stop_loss is not None:
+            item.stop_loss = stop_loss
+        if notes is not None:
+            item.notes = notes
+        db.commit()
+        db.refresh(item)
+        return item
+    finally:
+        db.close()
+
+
+def delete_portfolio_item(item_id: int, user_id: int) -> bool:
+    """Remove a stock from portfolio. Returns True if deleted."""
+    db = SessionLocal()
+    try:
+        item = (
+            db.query(PortfolioItem)
+            .filter(PortfolioItem.id == item_id, PortfolioItem.user_id == user_id)
+            .first()
+        )
+        if not item:
+            return False
+        db.delete(item)
         db.commit()
         return True
     finally:
