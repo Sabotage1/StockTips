@@ -8,6 +8,10 @@ let portfolioRefreshCountdown = 60;
 let portfolioData = null;
 let currentStockDetailId = null;
 
+// Settings state
+let userSettings = null;
+let settingsSaveTimer = null;
+
 const tickerInput = document.getElementById('tickerInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
 const loadingEl = document.getElementById('loading');
@@ -684,6 +688,7 @@ async function fetchCurrentUser() {
         if (!resp.ok) return;
         const data = await resp.json();
         currentUserRole = data.role || 'viewer';
+        if (data.settings) userSettings = data.settings;
         if (currentUserRole === 'admin') {
             const navUsers = document.getElementById('navUsers');
             if (navUsers) navUsers.style.display = '';
@@ -819,6 +824,8 @@ async function refreshPortfolioPrices() {
         renderPortfolioSummary(portfolioData);
         renderPortfolioTable(portfolioData.items);
         renderPortfolioPieChart(portfolioData.items);
+        applySettings();
+        initDragAndDrop();
     } catch (err) {
         console.error('Portfolio refresh error:', err);
     }
@@ -941,7 +948,7 @@ function renderPortfolioTable(items) {
     const tbody = document.getElementById('portfolioBody');
     if (!tbody) return;
     if (!items || !items.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="empty-row">No stocks in portfolio yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="empty-row">No stocks in portfolio yet</td></tr>';
         return;
     }
     tbody.innerHTML = items.map(function(it) {
@@ -963,20 +970,20 @@ function renderPortfolioTable(items) {
             }).join('');
         }
 
-        return '<tr>' +
-            '<td><a href="#" onclick="openStockDetail(' + it.id + ');return false" style="text-decoration:none;color:inherit"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
+        return '<tr draggable="true" data-item-id="' + it.id + '">' +
+            '<td data-col="ticker"><a href="#" onclick="openStockDetail(' + it.id + ');return false" style="text-decoration:none;color:inherit"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
                 (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</a></td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace">$' + it.purchase_price.toFixed(2) + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace">' + price +
-                (dayChg ? '<br><span style="font-size:11px;color:' + dayColor + '">' + dayChg + '</span>' : '') + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace">' + mktVal + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2);font-weight:600">' + portPct + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + '">' + pnl + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + ';font-weight:600">' + pnlPct + '</td>' +
-            '<td style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlColor + ';font-weight:600">' + dayPnl + '</td>' +
-            '<td style="max-width:200px">' + signalsHtml + '</td>' +
-            '<td style="white-space:nowrap"><button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
+            '<td data-col="shares" style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
+            '<td data-col="avg_cost" style="font-family:\'JetBrains Mono\',monospace">$' + it.purchase_price.toFixed(2) + '</td>' +
+            '<td data-col="price" style="font-family:\'JetBrains Mono\',monospace">' + price + '</td>' +
+            '<td data-col="mkt_value" style="font-family:\'JetBrains Mono\',monospace">' + mktVal + '</td>' +
+            '<td data-col="pct_port" style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2);font-weight:600">' + portPct + '</td>' +
+            '<td data-col="pnl" style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + '">' + pnl + '</td>' +
+            '<td data-col="pnl_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + ';font-weight:600">' + pnlPct + '</td>' +
+            '<td data-col="day_pnl" style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlColor + ';font-weight:600">' + dayPnl + '</td>' +
+            '<td data-col="day_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayColor + ';font-weight:600">' + (dayChg || 'N/A') + '</td>' +
+            '<td data-col="signals" style="max-width:200px">' + signalsHtml + '</td>' +
+            '<td data-col="actions" style="white-space:nowrap"><button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
                 '<button class="btn-delete-row" onclick="removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
             '</tr>';
     }).join('');
@@ -1037,6 +1044,208 @@ async function analyzePortfolioItem(id, ticker) {
         modalContent.innerHTML = '<p style="color:var(--red);padding:20px">Error: ' + err.message + '</p>';
     }
 }
+
+// --- Portfolio Settings ---
+
+var COLUMN_LABELS = {
+    ticker: 'Ticker', shares: 'Shares', avg_cost: 'Avg Cost', price: 'Price',
+    mkt_value: 'Mkt Value', pct_port: '% Portfolio', pnl: 'P&L', pnl_pct: 'P&L %',
+    day_pnl: 'Day P&L', day_pct: 'Day %', signals: 'Signals', actions: 'Actions'
+};
+var CARD_LABELS = {
+    total_value: 'Total Value', total_cost: 'Total Cost', total_pnl: 'Total P&L',
+    total_return: 'Return', day_pnl: 'Day P&L'
+};
+
+function toggleSettingsPanel() {
+    var panel = document.getElementById('settingsPanel');
+    var btn = document.querySelector('.btn-pf-settings');
+    if (!panel) return;
+    if (panel.style.display === 'none') {
+        panel.style.display = '';
+        if (btn) btn.classList.add('active');
+        renderSettingsPanel();
+    } else {
+        panel.style.display = 'none';
+        if (btn) btn.classList.remove('active');
+    }
+}
+
+function renderSettingsPanel() {
+    if (!userSettings) return;
+    var colsEl = document.getElementById('settingsColumns');
+    var cardsEl = document.getElementById('settingsCards');
+    var chartEl = document.getElementById('settingsChart');
+    if (!colsEl || !cardsEl || !chartEl) return;
+
+    // Columns toggles
+    var colKeys = Object.keys(COLUMN_LABELS);
+    colsEl.innerHTML = colKeys.map(function(key) {
+        var checked = userSettings.visible_columns[key] !== false;
+        return '<div class="settings-toggle">' +
+            '<span class="settings-toggle-label">' + COLUMN_LABELS[key] + '</span>' +
+            '<label class="toggle-switch"><input type="checkbox" data-type="col" data-key="' + key + '"' + (checked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
+            '</div>';
+    }).join('');
+
+    // Cards toggles
+    var cardKeys = Object.keys(CARD_LABELS);
+    cardsEl.innerHTML = cardKeys.map(function(key) {
+        var checked = userSettings.visible_cards[key] !== false;
+        return '<div class="settings-toggle">' +
+            '<span class="settings-toggle-label">' + CARD_LABELS[key] + '</span>' +
+            '<label class="toggle-switch"><input type="checkbox" data-type="card" data-key="' + key + '"' + (checked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
+            '</div>';
+    }).join('');
+
+    // Pie chart toggle
+    var pieChecked = userSettings.show_pie_chart !== false;
+    chartEl.innerHTML = '<div class="settings-toggle">' +
+        '<span class="settings-toggle-label">Pie Chart</span>' +
+        '<label class="toggle-switch"><input type="checkbox" data-type="chart" data-key="pie"' + (pieChecked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
+        '</div>';
+}
+
+function onSettingToggle(el) {
+    if (!userSettings) return;
+    var type = el.getAttribute('data-type');
+    var key = el.getAttribute('data-key');
+    var val = el.checked;
+
+    if (type === 'col') userSettings.visible_columns[key] = val;
+    else if (type === 'card') userSettings.visible_cards[key] = val;
+    else if (type === 'chart') userSettings.show_pie_chart = val;
+
+    applySettings();
+
+    // Debounced save
+    if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+    settingsSaveTimer = setTimeout(function() {
+        fetch(API + '/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userSettings),
+        }).catch(function(err) { console.error('Settings save error:', err); });
+    }, 300);
+}
+
+function applySettings() {
+    if (!userSettings) return;
+
+    // Apply column visibility
+    var cols = userSettings.visible_columns || {};
+    Object.keys(cols).forEach(function(key) {
+        var visible = cols[key] !== false;
+        // Header
+        var th = document.querySelector('#portfolioTable th[data-col="' + key + '"]');
+        if (th) th.style.display = visible ? '' : 'none';
+        // Body cells
+        document.querySelectorAll('#portfolioTable td[data-col="' + key + '"]').forEach(function(td) {
+            td.style.display = visible ? '' : 'none';
+        });
+    });
+
+    // Apply card visibility
+    var cards = userSettings.visible_cards || {};
+    Object.keys(cards).forEach(function(key) {
+        var visible = cards[key] !== false;
+        var card = document.querySelector('[data-card="' + key + '"]');
+        if (card) card.style.display = visible ? '' : 'none';
+    });
+
+    // Apply pie chart visibility
+    var pieWrap = document.getElementById('portfolioPieWrap');
+    if (pieWrap && userSettings.show_pie_chart === false) {
+        pieWrap.style.display = 'none';
+    }
+}
+
+// --- Drag and Drop ---
+
+var dragSrcRow = null;
+
+function initDragAndDrop() {
+    var rows = document.querySelectorAll('#portfolioTable tbody tr[draggable="true"]');
+    rows.forEach(function(row) {
+        row.addEventListener('dragstart', handleDragStart);
+        row.addEventListener('dragover', handleDragOver);
+        row.addEventListener('dragenter', handleDragEnter);
+        row.addEventListener('dragleave', handleDragLeave);
+        row.addEventListener('drop', handleDrop);
+        row.addEventListener('dragend', handleDragEnd);
+    });
+}
+
+function handleDragStart(e) {
+    dragSrcRow = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.getAttribute('data-item-id'));
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var rect = this.getBoundingClientRect();
+    var midY = rect.top + rect.height / 2;
+    this.classList.remove('drag-over-top', 'drag-over-bottom');
+    if (e.clientY < midY) {
+        this.classList.add('drag-over-top');
+    } else {
+        this.classList.add('drag-over-bottom');
+    }
+}
+
+function handleDragEnter(e) {
+    e.preventDefault();
+}
+
+function handleDragLeave() {
+    this.classList.remove('drag-over-top', 'drag-over-bottom');
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragSrcRow || dragSrcRow === this) {
+        this.classList.remove('drag-over-top', 'drag-over-bottom');
+        return;
+    }
+
+    var tbody = this.parentNode;
+    var isTop = this.classList.contains('drag-over-top');
+    this.classList.remove('drag-over-top', 'drag-over-bottom');
+
+    if (isTop) {
+        tbody.insertBefore(dragSrcRow, this);
+    } else {
+        tbody.insertBefore(dragSrcRow, this.nextSibling);
+    }
+
+    savePortfolioOrder();
+}
+
+function handleDragEnd() {
+    this.classList.remove('dragging');
+    document.querySelectorAll('#portfolioTable tbody tr').forEach(function(row) {
+        row.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    dragSrcRow = null;
+}
+
+function savePortfolioOrder() {
+    var rows = document.querySelectorAll('#portfolioTable tbody tr[data-item-id]');
+    var order = [];
+    rows.forEach(function(row) {
+        order.push(parseInt(row.getAttribute('data-item-id'), 10));
+    });
+    fetch(API + '/api/portfolio/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: order }),
+    }).catch(function(err) { console.error('Reorder save error:', err); });
+}
+
 
 function renderAnalysisModal(data) {
     var rec = data.recommendation || 'HOLD';

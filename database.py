@@ -1,4 +1,5 @@
 import datetime
+import json
 import uuid
 from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, UniqueConstraint
@@ -77,7 +78,17 @@ class PortfolioItem(Base):
     purchase_date = Column(String(20), default="")
     stop_loss = Column(Float, nullable=True)
     notes = Column(Text, default="")
+    sort_order = Column(Integer, default=0)
     added_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, unique=True, index=True, nullable=False)
+    settings_json = Column(Text, default="{}")
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 
 def init_db():
@@ -98,6 +109,7 @@ def _migrate_add_columns():
             ("ticker_analyses", "user_ip", "VARCHAR(100) DEFAULT ''"),
             ("ticker_analyses", "share_token", "VARCHAR(32)"),
             ("ticker_analyses", "web_user", "VARCHAR(100) DEFAULT ''"),
+            ("portfolio_items", "sort_order", "INTEGER DEFAULT 0"),
         ]
         for table, col, col_type in migrations:
             try:
@@ -392,13 +404,13 @@ def delete_user(user_id: int) -> bool:
 # --- Portfolio ---
 
 def get_user_portfolio(user_id: int) -> List[PortfolioItem]:
-    """Return all portfolio items for a user, ordered by most recently added."""
+    """Return all portfolio items for a user, ordered by sort_order then newest."""
     db = SessionLocal()
     try:
         return (
             db.query(PortfolioItem)
             .filter(PortfolioItem.user_id == user_id)
-            .order_by(PortfolioItem.added_at.desc())
+            .order_by(PortfolioItem.sort_order.asc(), PortfolioItem.added_at.desc())
             .all()
         )
     finally:
@@ -424,6 +436,7 @@ def add_portfolio_item(
         )
         if existing:
             raise ValueError("Ticker {} is already in your portfolio".format(ticker.upper()))
+        max_order = db.query(PortfolioItem).filter(PortfolioItem.user_id == user_id).count()
         item = PortfolioItem(
             user_id=user_id,
             ticker=ticker.upper(),
@@ -432,6 +445,7 @@ def add_portfolio_item(
             purchase_price=purchase_price,
             stop_loss=stop_loss,
             notes=notes,
+            sort_order=max_order,
         )
         db.add(item)
         db.commit()
@@ -486,6 +500,74 @@ def delete_portfolio_item(item_id: int, user_id: int) -> bool:
         if not item:
             return False
         db.delete(item)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+# --- User Settings ---
+
+DEFAULT_SETTINGS = {
+    "visible_columns": {
+        "ticker": True, "shares": True, "avg_cost": True, "price": True,
+        "mkt_value": True, "pct_port": True, "pnl": True, "pnl_pct": True,
+        "day_pnl": True, "day_pct": True, "signals": True, "actions": True,
+    },
+    "visible_cards": {
+        "total_value": True, "total_cost": True, "total_pnl": True,
+        "total_return": True, "day_pnl": True,
+    },
+    "show_pie_chart": True,
+}
+
+
+def get_user_settings(user_id: int) -> dict:
+    """Return user settings merged with defaults."""
+    db = SessionLocal()
+    try:
+        record = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        result = json.loads(json.dumps(DEFAULT_SETTINGS))  # deep copy defaults
+        if record and record.settings_json:
+            stored = json.loads(record.settings_json)
+            # Merge stored into defaults
+            for key in ("visible_columns", "visible_cards"):
+                if key in stored and isinstance(stored[key], dict):
+                    result[key].update(stored[key])
+            if "show_pie_chart" in stored:
+                result["show_pie_chart"] = stored["show_pie_chart"]
+        return result
+    finally:
+        db.close()
+
+
+def save_user_settings(user_id: int, settings: dict) -> dict:
+    """Upsert user settings. Returns the saved settings."""
+    db = SessionLocal()
+    try:
+        record = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+        settings_str = json.dumps(settings)
+        if record:
+            record.settings_json = settings_str
+            record.updated_at = datetime.datetime.utcnow()
+        else:
+            record = UserSettings(user_id=user_id, settings_json=settings_str)
+            db.add(record)
+        db.commit()
+        return settings
+    finally:
+        db.close()
+
+
+def reorder_portfolio(user_id: int, item_ids: List[int]) -> bool:
+    """Set sort_order for portfolio items based on the given ID order."""
+    db = SessionLocal()
+    try:
+        for idx, item_id in enumerate(item_ids):
+            db.query(PortfolioItem).filter(
+                PortfolioItem.id == item_id,
+                PortfolioItem.user_id == user_id,
+            ).update({"sort_order": idx})
         db.commit()
         return True
     finally:

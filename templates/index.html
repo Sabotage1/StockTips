@@ -52,7 +52,7 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Logout
             </a>
-            <span class="version-tag">v1.2</span>
+            <span class="version-tag">v1.3</span>
         </nav>
     </div>
 </header>
@@ -161,28 +161,49 @@
                 <span class="market-dot" id="marketDot"></span>
                 <span id="marketStatusText">Market Closed</span>
             </div>
-            <div class="refresh-timer" id="refreshTimer">Next refresh: 60s</div>
+            <div style="display:flex;align-items:center;gap:12px">
+                <div class="refresh-timer" id="refreshTimer">Next refresh: 60s</div>
+                <button class="btn-pf-settings" onclick="toggleSettingsPanel()" title="Portfolio Settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Settings Panel (collapsible) -->
+        <div class="settings-panel" id="settingsPanel" style="display:none">
+            <div class="settings-section">
+                <div class="settings-section-title">Table Columns</div>
+                <div id="settingsColumns"></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">Summary Cards</div>
+                <div id="settingsCards"></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">Chart</div>
+                <div id="settingsChart"></div>
+            </div>
         </div>
 
         <div class="portfolio-top-row">
             <div class="portfolio-summary" id="portfolioSummary">
-                <div class="stat-card">
+                <div class="stat-card" data-card="total_value">
                     <div class="stat-value" id="pfTotalValue">$0</div>
                     <div class="stat-label">Total Value</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-card="total_cost">
                     <div class="stat-value" id="pfTotalCost">$0</div>
                     <div class="stat-label">Total Cost</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-card="total_pnl">
                     <div class="stat-value" id="pfTotalPnl">$0</div>
                     <div class="stat-label">Total P&L</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-card="total_return">
                     <div class="stat-value" id="pfTotalReturn">0%</div>
                     <div class="stat-label">Return</div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" data-card="day_pnl">
                     <div class="stat-value" id="pfTotalDayPnl">$0</div>
                     <div class="stat-label">Day P&L</div>
                 </div>
@@ -208,21 +229,22 @@
             <table class="history-table" id="portfolioTable">
                 <thead>
                     <tr>
-                        <th>Ticker</th>
-                        <th>Shares</th>
-                        <th>Avg Cost</th>
-                        <th>Price</th>
-                        <th>Mkt Value</th>
-                        <th>% Port</th>
-                        <th>P&L</th>
-                        <th>P&L %</th>
-                        <th>Day P&L</th>
-                        <th>Signals</th>
-                        <th>Actions</th>
+                        <th data-col="ticker">Ticker</th>
+                        <th data-col="shares">Shares</th>
+                        <th data-col="avg_cost">Avg Cost</th>
+                        <th data-col="price">Price</th>
+                        <th data-col="mkt_value">Mkt Value</th>
+                        <th data-col="pct_port">% Port</th>
+                        <th data-col="pnl">P&L</th>
+                        <th data-col="pnl_pct">P&L %</th>
+                        <th data-col="day_pnl">Day P&L</th>
+                        <th data-col="day_pct">Day %</th>
+                        <th data-col="signals">Signals</th>
+                        <th data-col="actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="portfolioBody">
-                    <tr><td colspan="11" class="empty-row">No stocks in portfolio yet</td></tr>
+                    <tr><td colspan="12" class="empty-row">No stocks in portfolio yet</td></tr>
                 </tbody>
             </table>
         </div>

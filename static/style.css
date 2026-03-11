@@ -926,6 +926,90 @@ body {
 .btn-full-analysis:hover { filter: brightness(1.15); }
 .btn-full-analysis:disabled { opacity: 0.4; cursor: not-allowed; filter: none; }
 
+/* === Settings Panel === */
+.btn-pf-settings {
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 8px; border: none;
+    background: var(--surface2); color: var(--text2);
+    cursor: pointer; transition: all 0.2s;
+}
+.btn-pf-settings:hover { color: var(--accent2); background: rgba(124,108,240,0.15); }
+.btn-pf-settings.active { color: var(--accent2); background: rgba(124,108,240,0.2); }
+
+.settings-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+    margin-bottom: 16px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+    animation: fadeUp 0.2s ease;
+}
+.settings-section-title {
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text2); margin-bottom: 12px;
+}
+
+.settings-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0;
+}
+.settings-toggle-label {
+    font-size: 13px; color: var(--text); font-weight: 500;
+}
+
+/* Pure CSS toggle switch */
+.toggle-switch {
+    position: relative; width: 36px; height: 20px; flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: 20px; transition: all 0.2s;
+}
+.toggle-slider::before {
+    content: ''; position: absolute;
+    width: 14px; height: 14px; border-radius: 50%;
+    left: 2px; bottom: 2px;
+    background: var(--text3); transition: all 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+    background: rgba(124,108,240,0.3); border-color: var(--accent);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(16px); background: var(--accent2);
+}
+
+/* === Drag and Drop === */
+#portfolioTable tbody tr {
+    transition: opacity 0.15s, background 0.15s;
+}
+#portfolioTable tbody tr[draggable="true"] {
+    cursor: grab;
+}
+#portfolioTable tbody tr[draggable="true"] td:first-child {
+    position: relative;
+    padding-left: 28px;
+}
+#portfolioTable tbody tr[draggable="true"] td:first-child::before {
+    content: '\2807';
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--text3); font-size: 14px;
+    opacity: 0.5; transition: opacity 0.15s;
+}
+#portfolioTable tbody tr[draggable="true"]:hover td:first-child::before {
+    opacity: 1; color: var(--accent2);
+}
+#portfolioTable tbody tr.dragging {
+    opacity: 0.3;
+}
+#portfolioTable tbody tr.drag-over-top {
+    border-top: 2px solid var(--accent2);
+}
+#portfolioTable tbody tr.drag-over-bottom {
+    border-bottom: 2px solid var(--accent2);
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .header-inner { padding: 0 16px; }
@@ -960,4 +1044,5 @@ body {
     .stock-detail-header { flex-direction: column; }
     .stock-detail-right { text-align: left; }
     .stock-detail-entry-row { flex-direction: column; gap: 8px; }
+    .settings-panel { grid-template-columns: 1fr; }
 }

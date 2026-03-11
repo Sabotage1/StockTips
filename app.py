@@ -23,6 +23,7 @@ from database import (
     get_blocked_users, get_user_by_username, get_all_users, create_user,
     delete_user, get_user_portfolio, add_portfolio_item,
     update_portfolio_item, delete_portfolio_item,
+    get_user_settings, save_user_settings, reorder_portfolio,
 )
 from stock_analyzer import analyze_stock, get_quick_signals, get_quick_signals_batch
 from chart_generator import generate_chart
@@ -199,7 +200,8 @@ async def api_me(request: Request):
     user = get_user_by_username(session["user"])
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    return JSONResponse({"username": user.username, "role": user.role})
+    settings = get_user_settings(user.id)
+    return JSONResponse({"username": user.username, "role": user.role, "settings": settings})
 
 
 @app.post("/webhook/telegram")
@@ -837,6 +839,44 @@ async def api_portfolio_delete(request: Request, item_id: int):
     if not deleted:
         return JSONResponse({"error": "Not found"}, status_code=404)
     return JSONResponse({"ok": True, "deleted_id": item_id})
+
+
+@app.get("/api/settings")
+async def api_settings_get(request: Request):
+    """Return the current user's portfolio settings."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    settings = get_user_settings(user_id)
+    return JSONResponse(settings)
+
+
+@app.put("/api/settings")
+async def api_settings_put(request: Request):
+    """Save the current user's portfolio settings."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    saved = save_user_settings(user_id, body)
+    return JSONResponse({"ok": True, "settings": saved})
+
+
+@app.put("/api/portfolio/reorder")
+async def api_portfolio_reorder(request: Request):
+    """Persist drag-and-drop order for portfolio items."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    order = body.get("order", [])
+    if not isinstance(order, list):
+        return JSONResponse({"error": "order must be a list of item IDs"}, status_code=400)
+    reorder_portfolio(user_id, order)
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/portfolio/refresh")
