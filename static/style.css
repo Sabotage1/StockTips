@@ -85,6 +85,8 @@ body {
     background: var(--surface); border: 1px solid var(--border);
     font-family: 'JetBrains Mono', monospace;
     margin-left: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    line-height: 1; min-height: 22px;
 }
 
 /* === Main === */
@@ -394,6 +396,8 @@ body {
     font-size: 10px; padding: 3px 8px; border-radius: 6px;
     background: var(--surface2); color: var(--text2);
     text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    line-height: 1; min-height: 20px;
 }
 .source-badge.telegram { background: rgba(124,108,240,0.1); color: var(--accent2); }
 
@@ -754,12 +758,12 @@ body {
     padding: 5px 14px; border-radius: 8px;
     font-size: 12px; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.5px;
-    background: rgba(124,108,240,0.12); color: var(--accent2);
-    border: 1px solid rgba(124,108,240,0.3);
+    background: var(--green-bg); color: var(--green);
+    border: 1px solid rgba(52,211,153,0.3);
     cursor: pointer; font-family: inherit;
     transition: all 0.2s;
 }
-.btn-add-portfolio:hover { background: rgba(124,108,240,0.25); border-color: var(--accent2); }
+.btn-add-portfolio:hover { background: rgba(52,211,153,0.25); border-color: var(--green); }
 
 /* === Stock Detail View === */
 .stock-detail-view { animation: fadeUp 0.3s ease; }
