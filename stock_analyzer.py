@@ -394,17 +394,33 @@ def get_quick_signals(ticker, purchase_price, stop_loss=None):
     elif volume_ratio and volume_ratio >= 1.5:
         signals.append({"color": "blue", "text": "Above-average volume ({:.1f}x)".format(volume_ratio)})
 
+    # Extra live data from history (no new API calls)
+    company_name = history.get("short_name", "")
+    day_high = round(highs[-1], 2) if highs else None
+    day_low = round(lows[-1], 2) if lows else None
+    open_price = round(closes[-2], 2) if len(closes) >= 2 else None  # proxy: prev close
+    week_52_high = round(max(highs), 2) if highs else None
+    week_52_low = round(min(lows), 2) if lows else None
+    pre_post = history.get("pre_post", {})
+
     return {
         "ticker": ticker.upper(),
+        "company_name": company_name,
         "current_price": current_price,
         "previous_close": previous_close,
         "day_change": day_change,
         "day_change_pct": day_change_pct,
+        "day_high": day_high,
+        "day_low": day_low,
+        "open_price": open_price,
+        "week_52_high": week_52_high,
+        "week_52_low": week_52_low,
         "sma_20": sma_20,
         "sma_50": sma_50,
         "sma_200": sma_200,
         "atr_14": atr_14,
         "volume_ratio": volume_ratio,
+        "pre_post": pre_post,
         "signals": signals,
     }
 

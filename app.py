@@ -24,7 +24,7 @@ from database import (
     delete_user, get_user_portfolio, add_portfolio_item,
     update_portfolio_item, delete_portfolio_item,
 )
-from stock_analyzer import analyze_stock, get_quick_signals_batch
+from stock_analyzer import analyze_stock, get_quick_signals, get_quick_signals_batch
 from chart_generator import generate_chart
 from telegram_bot import start_telegram_bot_async
 from api_tracker import get_usage
@@ -901,6 +901,63 @@ async def api_portfolio_refresh(request: Request):
             "total_pnl": round(total_pnl, 2) if total_pnl is not None else None,
             "total_return_pct": round(total_return_pct, 2) if total_return_pct is not None else None,
         },
+    })
+
+
+@app.get("/api/portfolio/{item_id}/detail")
+async def api_portfolio_detail(request: Request, item_id: int):
+    """Fetch enriched live data for a single portfolio stock (price, SMAs, signals, P&L)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    items = get_user_portfolio(user_id)
+    item = None
+    for it in items:
+        if it.id == item_id:
+            item = it
+            break
+    if not item:
+        return JSONResponse({"error": "Portfolio item not found"}, status_code=404)
+
+    loop = asyncio.get_event_loop()
+    sig = await loop.run_in_executor(
+        None, get_quick_signals, item.ticker, item.purchase_price, item.stop_loss
+    )
+
+    cur_price = sig.get("current_price")
+    cost_basis = item.purchase_price * item.shares
+    market_value = cur_price * item.shares if cur_price else None
+    pnl = (market_value - cost_basis) if market_value else None
+    pnl_pct = (pnl / cost_basis * 100) if pnl is not None and cost_basis else None
+
+    return JSONResponse({
+        "id": item.id,
+        "ticker": item.ticker,
+        "company_name": sig.get("company_name") or item.company_name,
+        "shares": item.shares,
+        "purchase_price": item.purchase_price,
+        "stop_loss": item.stop_loss,
+        "notes": item.notes,
+        "current_price": cur_price,
+        "previous_close": sig.get("previous_close"),
+        "day_change": sig.get("day_change"),
+        "day_change_pct": sig.get("day_change_pct"),
+        "day_high": sig.get("day_high"),
+        "day_low": sig.get("day_low"),
+        "open_price": sig.get("open_price"),
+        "week_52_high": sig.get("week_52_high"),
+        "week_52_low": sig.get("week_52_low"),
+        "sma_20": sig.get("sma_20"),
+        "sma_50": sig.get("sma_50"),
+        "sma_200": sig.get("sma_200"),
+        "atr_14": sig.get("atr_14"),
+        "volume_ratio": sig.get("volume_ratio"),
+        "pre_post": sig.get("pre_post", {}),
+        "signals": sig.get("signals", []),
+        "market_value": round(market_value, 2) if market_value else None,
+        "pnl": round(pnl, 2) if pnl is not None else None,
+        "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
     })
 
 

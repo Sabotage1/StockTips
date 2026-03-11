@@ -6,6 +6,7 @@ let currentUserRole = 'viewer';
 let portfolioRefreshTimer = null;
 let portfolioRefreshCountdown = 60;
 let portfolioData = null;
+let currentStockDetailId = null;
 
 const tickerInput = document.getElementById('tickerInput');
 const analyzeBtn = document.getElementById('analyzeBtn');
@@ -26,7 +27,10 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.getElementById(`panel-${currentPanel}`).classList.add('active');
         // Stop portfolio refresh when leaving that tab
-        if (currentPanel !== 'portfolio') stopPortfolioRefresh();
+        if (currentPanel !== 'portfolio') {
+            stopPortfolioRefresh();
+            if (currentStockDetailId) closeStockDetail();
+        }
         if (currentPanel === 'history') loadHistory();
         if (currentPanel === 'usage') loadUsage();
         if (currentPanel === 'users') loadUsers();
@@ -796,7 +800,11 @@ function startPortfolioRefresh() {
         if (portfolioRefreshCountdown <= 0) {
             portfolioRefreshCountdown = 60;
             updateMarketStatus();
-            refreshPortfolioPrices();
+            if (currentStockDetailId) {
+                openStockDetail(currentStockDetailId);
+            } else {
+                refreshPortfolioPrices();
+            }
         }
     }, 1000);
 }
@@ -852,8 +860,8 @@ function renderPortfolioTable(items) {
         }
 
         return '<tr>' +
-            '<td><strong style="font-family:\'JetBrains Mono\',monospace">' + it.ticker + '</strong>' +
-                (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</td>' +
+            '<td><a href="#" onclick="openStockDetail(' + it.id + ');return false" style="text-decoration:none;color:inherit"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
+                (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</a></td>' +
             '<td style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
             '<td style="font-family:\'JetBrains Mono\',monospace">$' + it.purchase_price.toFixed(2) + '</td>' +
             '<td style="font-family:\'JetBrains Mono\',monospace">' + price +
@@ -915,14 +923,160 @@ async function analyzePortfolioItem(id, ticker) {
         var resp = await fetch(API + '/api/portfolio/' + id + '/analyze', { method: 'POST' });
         if (!resp.ok) { var err = await resp.json(); throw new Error(err.error || 'Analysis failed'); }
         var data = await resp.json();
-        // Reuse showDetail to render in modal by calling the analysis detail endpoint
-        modalOverlay.classList.remove('active');
-        showDetail(data.id);
+        // Render directly in modal with the response data (which includes purchase_price)
+        renderAnalysisModal(data);
         // Refresh portfolio to pick up updated stop_loss
         refreshPortfolioPrices();
     } catch (err) {
         modalContent.innerHTML = '<p style="color:var(--red);padding:20px">Error: ' + err.message + '</p>';
     }
+}
+
+function renderAnalysisModal(data) {
+    var rec = data.recommendation || 'HOLD';
+    var cls = rec.startsWith('BUY') ? 'badge-buy' : rec.startsWith('SELL') ? 'badge-sell' : 'badge-hold';
+    var confClass = data.confidence === 'HIGH' ? 'badge-high' : data.confidence === 'MEDIUM' ? 'badge-medium' : 'badge-low';
+    var riskClass = data.risk_level === 'LOW' ? 'badge-high' : data.risk_level === 'HIGH' ? 'badge-low' : 'badge-medium';
+    var price = data.current_price ? '$' + data.current_price.toFixed(2) : 'N/A';
+    var priceColor = rec.startsWith('BUY') ? 'var(--green)' : rec.startsWith('SELL') ? 'var(--red)' : 'var(--yellow)';
+    var date = data.created_at ? new Date(data.created_at).toLocaleString() : '';
+
+    // Entry price & P&L banner
+    var entryHtml = '';
+    if (data.purchase_price) {
+        var entryPnl = data.current_price ? data.current_price - data.purchase_price : null;
+        var entryPnlPct = entryPnl !== null ? (entryPnl / data.purchase_price * 100) : null;
+        var pnlColor = entryPnl !== null ? (entryPnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+        entryHtml = '<div style="display:flex;gap:16px;align-items:center;padding:10px 16px;margin-bottom:12px;background:rgba(124,108,240,0.06);border:1px solid rgba(124,108,240,0.2);border-radius:10px;font-size:13px">' +
+            '<span style="color:var(--text2)">Entry: <strong style="color:var(--text);font-family:\'JetBrains Mono\',monospace">$' + data.purchase_price.toFixed(2) + '</strong></span>' +
+            (entryPnl !== null ? '<span style="color:' + pnlColor + ';font-weight:600;font-family:\'JetBrains Mono\',monospace">' + (entryPnl >= 0 ? '+' : '') + '$' + entryPnl.toFixed(2) + ' (' + (entryPnlPct >= 0 ? '+' : '') + entryPnlPct.toFixed(2) + '%)</span>' : '') +
+            '</div>';
+    }
+
+    // Pattern banner
+    var patternHtml = data.chart_pattern && data.chart_pattern !== 'None detected' && data.chart_pattern !== 'N/A'
+        ? '<div class="pattern-banner"><strong>Pattern Detected:</strong> ' + data.chart_pattern + '</div>' : '';
+
+    // Trading Setup
+    var actionTrigger = data.action_trigger && data.action_trigger !== 'N/A' ? data.action_trigger : '';
+    var breakoutLevel = data.breakout_level && data.breakout_level !== 'N/A' ? data.breakout_level : '';
+    var breakoutDir = data.breakout_direction || '';
+    var expGain = data.expected_gain_pct && data.expected_gain_pct !== 'N/A' ? data.expected_gain_pct : '';
+    var expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? data.expected_loss_pct : '';
+    var rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? data.risk_reward_ratio : '';
+    var timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? data.breakout_timeframe : '';
+
+    var supportHtml = '';
+    if (data.support_levels && data.support_levels.length) {
+        supportHtml = '<ul class="level-list">' + data.support_levels.map(function(s) {
+            return '<li class="level-item"><span class="level-dot support"></span>' + s + '</li>';
+        }).join('') + '</ul>';
+    } else {
+        supportHtml = '<p style="color:var(--text3);font-size:13px">No key supports identified</p>';
+    }
+    var resistanceHtml = '';
+    if (data.resistance_levels && data.resistance_levels.length) {
+        resistanceHtml = '<ul class="level-list">' + data.resistance_levels.map(function(r) {
+            return '<li class="level-item"><span class="level-dot resistance"></span>' + r + '</li>';
+        }).join('') + '</ul>';
+    } else {
+        resistanceHtml = '<p style="color:var(--text3);font-size:13px">No key resistances identified</p>';
+    }
+
+    var hasTradingSetup = actionTrigger || breakoutLevel || expGain || (data.support_levels && data.support_levels.length) || (data.resistance_levels && data.resistance_levels.length);
+    var tradingSetupHtml = hasTradingSetup ? '<div class="trading-setup" style="margin-top:16px"><div class="card-title">Trading Setup</div>' +
+        (actionTrigger ? '<div class="action-trigger-box"><div class="action-trigger-label">Action Trigger</div><div class="action-trigger-text">' + actionTrigger + '</div></div>' : '') +
+        '<div class="setup-grid"><div><div class="setup-section-title">Support Levels</div>' + supportHtml + '</div><div><div class="setup-section-title">Resistance Levels</div>' + resistanceHtml + '</div></div>' +
+        '<div class="breakout-box">' +
+        (breakoutLevel ? '<div class="breakout-item"><div class="breakout-item-label">Breakout Level</div><div class="breakout-item-value ' + (breakoutDir === 'BULLISH' ? 'green' : breakoutDir === 'BEARISH' ? 'red' : 'blue') + '">' + breakoutLevel + '</div></div>' : '') +
+        (expGain ? '<div class="breakout-item"><div class="breakout-item-label">Expected Gain</div><div class="breakout-item-value green">+' + expGain.replace('+','') + '</div></div>' : '') +
+        (expLoss ? '<div class="breakout-item"><div class="breakout-item-label">Expected Loss</div><div class="breakout-item-value red">-' + expLoss.replace('-','') + '</div></div>' : '') +
+        (rrRatio ? '<div class="breakout-item"><div class="breakout-item-label">Risk / Reward</div><div class="breakout-item-value accent">' + rrRatio + '</div></div>' : '') +
+        '</div>' +
+        (timeframe ? '<div class="timeframe-row">Expected timeframe: <strong>' + timeframe + '</strong></div>' : '') +
+        '</div>' : '';
+
+    // Key factors
+    var factorsHtml = '';
+    if (data.key_factors && data.key_factors.length) {
+        factorsHtml = '<ul>' + data.key_factors.map(function(f) { return '<li>' + f + '</li>'; }).join('') + '</ul>';
+    }
+
+    // Metrics
+    var metricsHtml = '';
+    if (data.stock_data) {
+        var sd = data.stock_data;
+        var fmt = function(v) { return typeof v === 'number' ? '$' + v.toFixed(2) : v; };
+        var rows = [
+            ['P/E', sd.pe_ratio], ['Fwd P/E', sd.forward_pe], ['EPS', sd.eps],
+            ['Mkt Cap', sd.market_cap],
+            ['SMA 20', sd.sma_20 ? fmt(sd.sma_20) : null],
+            ['SMA 150', sd.sma_150 ? fmt(sd.sma_150) : null],
+            ['SMA 200', sd.sma_200 ? fmt(sd.sma_200) : null],
+            ['ATR(14)', sd.atr_14], ['RSI(14)', sd.rsi_14],
+            ['Beta', sd.beta], ['Div Yield', sd.dividend_yield],
+            ['MA Setup', sd.ma_alignment],
+        ].filter(function(r) { return r[1] != null && r[1] !== ''; });
+        metricsHtml = '<div class="metric-grid">' +
+            rows.map(function(r) { return '<div><span class="metric-label">' + r[0] + '</span><span class="metric-val">' + r[1] + '</span></div>'; }).join('') +
+            '</div>';
+    }
+
+    var cardsHtml = '<div class="cards-grid" style="margin-top:16px">' +
+        '<div class="card"><div class="card-title">Targets & Stop Loss</div>' +
+        '<div class="target-row"><span class="target-label">Short-term</span><span class="target-val">' + (data.price_target_short || 'N/A') + '</span></div>' +
+        '<div class="target-row"><span class="target-label">Long-term</span><span class="target-val">' + (data.price_target_long || 'N/A') + '</span></div>' +
+        '<div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">' + (data.stop_loss || 'N/A') + '</span></div>' +
+        '</div>' +
+        '<div class="card"><div class="card-title">Key Factors</div>' + (factorsHtml || '<p style="color:var(--text3)">N/A</p>') + '</div>' +
+        '<div class="card"><div class="card-title">Metrics</div>' + (metricsHtml || '<p style="color:var(--text3)">N/A</p>') + '</div>' +
+        '</div>';
+
+    // News
+    var newsHtml = '';
+    if (data.news_articles && data.news_articles.length) {
+        newsHtml = '<div class="news-card" style="margin-top:16px"><div class="card-title">News (' + data.news_articles.length + ')</div><ul class="news-list">' +
+            data.news_articles.map(function(a) {
+                return '<li class="news-item"><a href="' + a.link + '" target="_blank">' + a.title + '</a><div class="news-source">' + a.source + (a.published ? ' &mdash; ' + a.published : '') + '</div></li>';
+            }).join('') + '</ul></div>';
+    }
+
+    modalContent.innerHTML =
+        '<div class="result-hero" style="margin-bottom:0">' +
+            '<div class="result-top">' +
+                '<div class="result-ticker-wrap">' +
+                    '<span class="result-ticker">' + data.ticker + '</span>' +
+                    '<span class="result-company">' + (data.company_name || '') + '</span>' +
+                '</div>' +
+                '<span class="result-price" style="color:' + priceColor + '">' + price + '</span>' +
+            '</div>' +
+            entryHtml +
+            '<div class="badges">' +
+                '<span class="badge ' + cls + '">' + rec + '</span>' +
+                '<span class="badge ' + confClass + '">' + data.confidence + ' confidence</span>' +
+                (data.risk_level ? '<span class="badge ' + riskClass + '">' + data.risk_level + ' risk</span>' : '') +
+                (data.trend_status ? '<span class="badge badge-info">' + data.trend_status + '</span>' : '') +
+                (data.share_token ? '<button class="btn-share" onclick="copyShareLink(\'' + data.share_token + '\', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>' : '') +
+            '</div>' +
+            '<p style="color:var(--text3);font-size:12px;margin-bottom:12px">' + date + '</p>' +
+            patternHtml +
+            '<div class="result-summary">' + data.short_summary + '</div>' +
+        '</div>' +
+        tradingSetupHtml +
+        cardsHtml +
+        '<div class="chart-card" style="margin-top:16px">' +
+            '<div class="card-title">Candlestick Chart</div>' +
+            '<img src="' + API + '/api/chart/' + data.ticker + '" alt="Chart" onerror="this.parentElement.style.display=\'none\'" />' +
+        '</div>' +
+        (data.news_digest ? '<div class="news-digest-card" style="margin-top:16px"><div class="card-title">AI News Digest</div>' +
+            '<span class="sentiment-badge sentiment-' + ((data.news_digest.sentiment || '').toLowerCase()) + '">' + (data.news_digest.sentiment || 'N/A') + '</span>' +
+            '<ul class="digest-bullets">' + (data.news_digest.summary_bullets || []).map(function(b) { return '<li>' + b + '</li>'; }).join('') + '</ul></div>' : '') +
+        '<div class="analysis-card" style="margin-top:16px">' +
+            '<div class="card-title">Full Analysis</div>' +
+            '<div class="full-analysis">' + (data.full_analysis || 'N/A') + '</div>' +
+        '</div>' +
+        newsHtml;
+    modalOverlay.classList.add('active');
 }
 
 function showAddToPortfolioFromAnalysis(ticker, company, price) {
@@ -946,6 +1100,160 @@ function showAddToPortfolioFromAnalysis(ticker, company, price) {
             alert(ticker + ' added to your portfolio!');
         });
     }).catch(function(err) { alert('Error: ' + err.message); });
+}
+
+// --- Stock Detail View ---
+
+async function openStockDetail(itemId) {
+    currentStockDetailId = itemId;
+    var detailView = document.getElementById('portfolio-stock-detail');
+    var detailContent = document.getElementById('stockDetailContent');
+    var statusBar = document.querySelector('.portfolio-status-bar');
+    var summary = document.getElementById('portfolioSummary');
+    var addForm = document.querySelector('.portfolio-add-form');
+    var tableWrap = document.getElementById('portfolioTableWrap');
+
+    // Show loading in detail view
+    detailContent.innerHTML = '<div style="text-align:center;padding:60px"><div class="pulse-ring"></div><p style="margin-top:16px;color:var(--text2)">Loading stock data...</p></div>';
+    detailView.style.display = 'block';
+    if (statusBar) statusBar.style.display = 'none';
+    if (summary) summary.style.display = 'none';
+    if (addForm) addForm.style.display = 'none';
+    if (tableWrap) tableWrap.style.display = 'none';
+
+    try {
+        var resp = await fetch(API + '/api/portfolio/' + itemId + '/detail');
+        if (!resp.ok) { var err = await resp.json(); throw new Error(err.error || 'Failed to load'); }
+        var data = await resp.json();
+        renderStockDetail(data);
+    } catch (err) {
+        detailContent.innerHTML = '<p style="color:var(--red);padding:20px">Error: ' + err.message + '</p>';
+    }
+}
+
+function closeStockDetail() {
+    currentStockDetailId = null;
+    var detailView = document.getElementById('portfolio-stock-detail');
+    var statusBar = document.querySelector('.portfolio-status-bar');
+    var summary = document.getElementById('portfolioSummary');
+    var addForm = document.querySelector('.portfolio-add-form');
+    var tableWrap = document.getElementById('portfolioTableWrap');
+
+    detailView.style.display = 'none';
+    if (statusBar) statusBar.style.display = '';
+    if (summary) summary.style.display = '';
+    if (addForm) addForm.style.display = '';
+    if (tableWrap) tableWrap.style.display = '';
+}
+
+function renderStockDetail(data) {
+    var detailContent = document.getElementById('stockDetailContent');
+    if (!detailContent) return;
+
+    var curPrice = data.current_price;
+    var priceStr = curPrice != null ? '$' + curPrice.toFixed(2) : 'N/A';
+    var dayChg = data.day_change != null ? ((data.day_change >= 0 ? '+' : '') + '$' + Math.abs(data.day_change).toFixed(2)) : '';
+    var dayChgPct = data.day_change_pct != null ? ((data.day_change_pct >= 0 ? '+' : '') + data.day_change_pct.toFixed(2) + '%') : '';
+    var dayColor = data.day_change != null ? (data.day_change >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+
+    // P&L
+    var pnl = data.pnl;
+    var pnlPct = data.pnl_pct;
+    var pnlStr = pnl != null ? ((pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2)) : 'N/A';
+    var pnlPctStr = pnlPct != null ? ((pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%') : '';
+    var pnlColor = pnl != null ? (pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+
+    var mktValStr = data.market_value != null ? '$' + data.market_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : 'N/A';
+
+    // Pre/post market
+    var prePostHtml = '';
+    var pp = data.pre_post || {};
+    if (pp.pre_market_price) {
+        var preColor = (pp.pre_market_change || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+        prePostHtml += '<span style="font-size:12px;color:var(--text3);margin-left:8px">Pre: <span style="color:' + preColor + ';font-weight:600">$' + pp.pre_market_price.toFixed(2) + '</span></span>';
+    }
+    if (pp.post_market_price) {
+        var postColor = (pp.post_market_change || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+        prePostHtml += '<span style="font-size:12px;color:var(--text3);margin-left:8px">Post: <span style="color:' + postColor + ';font-weight:600">$' + pp.post_market_price.toFixed(2) + '</span></span>';
+    }
+
+    // Format helper
+    var fmtPrice = function(v) { return v != null ? '$' + v.toFixed(2) : 'N/A'; };
+    var fmtRatio = function(v) { return v != null ? v.toFixed(2) + 'x' : 'N/A'; };
+
+    // Signals
+    var signalsHtml = '';
+    if (data.signals && data.signals.length) {
+        signalsHtml = data.signals.map(function(s) {
+            return '<span class="signal-badge signal-' + s.color + '">' + s.text + '</span>';
+        }).join(' ');
+    } else {
+        signalsHtml = '<span style="color:var(--text3);font-size:13px">No signals</span>';
+    }
+
+    detailContent.innerHTML =
+        // Header
+        '<div class="stock-detail-header">' +
+            '<div class="stock-detail-left">' +
+                '<div class="stock-detail-ticker">' + data.ticker + '</div>' +
+                '<div class="stock-detail-company">' + (data.company_name || '') + '</div>' +
+            '</div>' +
+            '<div class="stock-detail-right">' +
+                '<div class="stock-detail-price">' + priceStr + '</div>' +
+                '<div class="stock-detail-day-change" style="color:' + dayColor + '">' + dayChg + ' (' + dayChgPct + ')' + prePostHtml + '</div>' +
+            '</div>' +
+        '</div>' +
+
+        // Entry / P&L row
+        '<div class="stock-detail-entry-row">' +
+            '<div class="stock-detail-entry-item">Entry: <strong>$' + data.purchase_price.toFixed(2) + '</strong></div>' +
+            '<div class="stock-detail-entry-item">Shares: <strong>' + data.shares + '</strong></div>' +
+            '<div class="stock-detail-entry-item">Mkt Value: <strong>' + mktValStr + '</strong></div>' +
+            '<div class="stock-detail-entry-item">P&L: <strong style="color:' + pnlColor + '">' + pnlStr + ' ' + pnlPctStr + '</strong></div>' +
+            (data.stop_loss ? '<div class="stock-detail-entry-item">Stop Loss: <strong style="color:var(--red)">$' + data.stop_loss.toFixed(2) + '</strong></div>' : '') +
+        '</div>' +
+
+        // Price Data + Technicals grid
+        '<div class="stock-detail-grid">' +
+            '<div class="card">' +
+                '<div class="card-title">Price Data</div>' +
+                '<div class="metric-grid">' +
+                    '<div><span class="metric-label">Open</span><span class="metric-val">' + fmtPrice(data.open_price) + '</span></div>' +
+                    '<div><span class="metric-label">Day High</span><span class="metric-val">' + fmtPrice(data.day_high) + '</span></div>' +
+                    '<div><span class="metric-label">Day Low</span><span class="metric-val">' + fmtPrice(data.day_low) + '</span></div>' +
+                    '<div><span class="metric-label">Prev Close</span><span class="metric-val">' + fmtPrice(data.previous_close) + '</span></div>' +
+                    '<div><span class="metric-label">52W High</span><span class="metric-val">' + fmtPrice(data.week_52_high) + '</span></div>' +
+                    '<div><span class="metric-label">52W Low</span><span class="metric-val">' + fmtPrice(data.week_52_low) + '</span></div>' +
+                    '<div><span class="metric-label">Vol Ratio</span><span class="metric-val">' + fmtRatio(data.volume_ratio) + '</span></div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="card">' +
+                '<div class="card-title">Technicals</div>' +
+                '<div class="metric-grid">' +
+                    '<div><span class="metric-label">SMA 20</span><span class="metric-val">' + fmtPrice(data.sma_20) + '</span></div>' +
+                    '<div><span class="metric-label">SMA 50</span><span class="metric-val">' + fmtPrice(data.sma_50) + '</span></div>' +
+                    '<div><span class="metric-label">SMA 200</span><span class="metric-val">' + fmtPrice(data.sma_200) + '</span></div>' +
+                    '<div><span class="metric-label">ATR 14</span><span class="metric-val">' + fmtPrice(data.atr_14) + '</span></div>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+
+        // Signals
+        '<div class="stock-detail-signals">' +
+            '<div class="card-title">Signals</div>' +
+            signalsHtml +
+        '</div>' +
+
+        // Chart
+        '<div class="chart-card">' +
+            '<div class="card-title">Chart</div>' +
+            '<img src="' + API + '/api/chart/' + data.ticker + '" alt="Chart" onerror="this.parentElement.style.display=\'none\'" />' +
+        '</div>' +
+
+        // Actions
+        '<div class="stock-detail-actions">' +
+            '<button class="btn-full-analysis" onclick="analyzePortfolioItem(' + data.id + ',\'' + data.ticker + '\')">Full AI Analysis</button>' +
+        '</div>';
 }
 
 fetchCurrentUser();
