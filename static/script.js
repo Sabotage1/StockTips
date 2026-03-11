@@ -259,7 +259,7 @@ function renderResult(data) {
                 <span class="badge ${riskClass}">${data.risk_level || 'N/A'} risk</span>
                 ${data.trend_status ? `<span class="badge badge-info">${data.trend_status}</span>` : ''}
                 ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
-                <button class="btn-add-portfolio" onclick="showAddToPortfolioFromAnalysis('${data.ticker}', '${(data.company_name || '').replace(/'/g, "\\'")}', ${data.current_price || 0})">+ Portfolio</button>
+                <button class="btn-add-portfolio" onclick="showAddToPortfolioFromAnalysis('${data.ticker}', '${(data.company_name || '').replace(/'/g, "\\'")}', ${data.purchase_price || data.current_price || 0})">+ Portfolio</button>
             </div>
             ${patternHtml}
             <div class="result-summary">${data.short_summary}</div>
