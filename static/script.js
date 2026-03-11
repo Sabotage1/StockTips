@@ -587,6 +587,11 @@ async function toggleBlockUser(userId, username, isCurrentlyBlocked) {
 document.querySelector('.modal-close').addEventListener('click', () => modalOverlay.classList.remove('active'));
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) modalOverlay.classList.remove('active'); });
 
+// Portfolio modal - click outside to close
+document.getElementById('pfModalOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closePfModal();
+});
+
 // Delete single analysis
 async function deleteAnalysis(id) {
     if (!confirm('Delete this analysis?')) return;
@@ -1081,26 +1086,88 @@ function renderAnalysisModal(data) {
 }
 
 function showAddToPortfolioFromAnalysis(ticker, company, price) {
-    var sharesStr = prompt('Add ' + ticker + ' to portfolio.\n\nHow many shares?', '10');
-    if (sharesStr === null) return;
-    var shares = parseFloat(sharesStr);
-    if (!shares || shares <= 0) { alert('Invalid number of shares'); return; }
+    var overlay = document.getElementById('pfModalOverlay');
+    var content = document.getElementById('pfModalContent');
+    var hasPrice = price && price > 0;
 
-    var priceStr = prompt('Average cost per share?', price > 0 ? price.toFixed(2) : '');
-    if (priceStr === null) return;
-    var avgCost = parseFloat(priceStr);
-    if (!avgCost || avgCost <= 0) { alert('Invalid price'); return; }
+    content.innerHTML =
+        '<div class="pf-modal-title">Add ' + ticker + ' to Portfolio</div>' +
+        '<div class="pf-modal-sub">' + (company || ticker) + '</div>' +
+        '<div class="pf-modal-field">' +
+            '<label class="pf-modal-label">Number of Shares</label>' +
+            '<input type="number" id="pfModalShares" class="pf-modal-input" placeholder="e.g. 10" min="0" step="any" autofocus>' +
+        '</div>' +
+        '<div class="pf-modal-field">' +
+            '<label class="pf-modal-label">Average Cost per Share</label>' +
+            (hasPrice
+                ? '<div class="pf-modal-price-display">$' + price.toFixed(2) + '</div>' +
+                  '<input type="hidden" id="pfModalPrice" value="' + price.toFixed(2) + '">'
+                : '<input type="number" id="pfModalPrice" class="pf-modal-input" placeholder="$0.00" min="0" step="any">') +
+        '</div>' +
+        '<button class="pf-modal-btn" id="pfModalSubmit" onclick="submitPfModal(\'' + ticker + '\', \'' + company.replace(/'/g, "\\'") + '\')">Add to Portfolio</button>' +
+        '<div class="pf-modal-error" id="pfModalError"></div>';
 
-    fetch(API + '/api/portfolio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: ticker, shares: shares, purchase_price: avgCost, company_name: company }),
-    }).then(function(resp) {
-        return resp.json().then(function(data) {
-            if (!resp.ok) { alert(data.error || 'Failed to add'); return; }
-            alert(ticker + ' added to your portfolio!');
+    overlay.classList.add('active');
+    // Focus the shares input after a tick
+    setTimeout(function() {
+        var inp = document.getElementById('pfModalShares');
+        if (inp) inp.focus();
+    }, 100);
+}
+
+function closePfModal() {
+    document.getElementById('pfModalOverlay').classList.remove('active');
+}
+
+async function submitPfModal(ticker, company) {
+    var errorEl = document.getElementById('pfModalError');
+    var btn = document.getElementById('pfModalSubmit');
+    var sharesVal = parseFloat(document.getElementById('pfModalShares').value);
+    var priceVal = parseFloat(document.getElementById('pfModalPrice').value);
+
+    errorEl.style.display = 'none';
+    if (!sharesVal || sharesVal <= 0) {
+        errorEl.textContent = 'Please enter a valid number of shares';
+        errorEl.style.display = 'block';
+        return;
+    }
+    if (!priceVal || priceVal <= 0) {
+        errorEl.textContent = 'Please enter a valid price';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Adding...';
+    try {
+        var resp = await fetch(API + '/api/portfolio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticker: ticker, shares: sharesVal, purchase_price: priceVal, company_name: company }),
         });
-    }).catch(function(err) { alert('Error: ' + err.message); });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errorEl.textContent = data.error || 'Failed to add';
+            errorEl.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Add to Portfolio';
+            return;
+        }
+        // Success state
+        var content = document.getElementById('pfModalContent');
+        content.innerHTML =
+            '<div class="pf-modal-success">' +
+                '<div class="pf-modal-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+                '<div class="pf-modal-success-text">' + ticker + ' added to portfolio</div>' +
+                '<div class="pf-modal-success-sub">' + sharesVal + ' shares at $' + priceVal.toFixed(2) + '</div>' +
+            '</div>';
+        setTimeout(closePfModal, 1500);
+    } catch (err) {
+        errorEl.textContent = 'Error: ' + err.message;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Add to Portfolio';
+    }
 }
 
 // --- Stock Detail View ---
