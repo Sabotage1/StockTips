@@ -47,6 +47,7 @@ function quickAnalyze(t) {
 // Analyze
 analyzeBtn.addEventListener('click', analyze);
 tickerInput.addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+tickerInput.addEventListener('focus', () => tickerInput.select());
 
 async function analyze() {
     const ticker = tickerInput.value.trim().toUpperCase();
@@ -54,6 +55,10 @@ async function analyze() {
     analyzeBtn.disabled = true;
     loadingEl.classList.add('active');
     resultCard.classList.remove('active');
+    resultCard.innerHTML = '';
+
+    // Scroll to loading so user sees progress
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     const priceInput = document.getElementById('purchasePriceInput');
     const rawPrice = priceInput ? priceInput.value.trim().replace('$', '').replace(',', '') : '';
@@ -71,10 +76,12 @@ async function analyze() {
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Analysis failed'); }
         renderResult(await resp.json());
     } catch (err) {
-        alert(`Error: ${err.message}`);
+        resultCard.innerHTML = `<div style="text-align:center;padding:32px"><p style="color:var(--red);font-size:15px;font-weight:600">Error: ${err.message}</p><p style="color:var(--text3);font-size:13px;margin-top:8px">Try again or enter a different ticker</p></div>`;
+        resultCard.classList.add('active');
     } finally {
         analyzeBtn.disabled = false;
         loadingEl.classList.remove('active');
+        tickerInput.focus();
     }
 }
 
