@@ -1171,6 +1171,11 @@ function initDragAndDrop() {
     if (!tbody || tbody._dragInit) return;
     tbody._dragInit = true;
 
+    // Tiny transparent drag ghost to avoid expensive row snapshot
+    var dragGhost = document.createElement('div');
+    dragGhost.style.cssText = 'position:fixed;top:-999px;width:1px;height:1px;opacity:0.01;';
+    document.body.appendChild(dragGhost);
+
     tbody.addEventListener('dragstart', function(e) {
         var row = e.target.closest('tr[draggable="true"]');
         if (!row) return;
@@ -1178,6 +1183,7 @@ function initDragAndDrop() {
         row.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', '');
+        e.dataTransfer.setDragImage(dragGhost, 0, 0);
     });
 
     tbody.addEventListener('dragover', function(e) {

@@ -387,7 +387,7 @@ body {
     background: var(--surface2); border-bottom: 1px solid var(--border);
 }
 .history-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
-.history-table tbody tr { cursor: pointer; transition: background 0.15s; }
+.history-table tbody tr { cursor: pointer; }
 .history-table tbody tr:hover { background: var(--surface2); }
 .history-table tbody tr:last-child td { border-bottom: none; }
 .empty-row { text-align: center; padding: 48px 16px !important; color: var(--text3); }
