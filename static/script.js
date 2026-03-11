@@ -970,7 +970,7 @@ function renderPortfolioTable(items) {
             }).join('');
         }
 
-        return '<tr draggable="true" data-item-id="' + it.id + '">' +
+        return '<tr data-item-id="' + it.id + '">' +
             '<td data-col="ticker"><a href="#" onclick="openStockDetail(' + it.id + ');return false" style="text-decoration:none;color:inherit"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
                 (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</a></td>' +
             '<td data-col="shares" style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
@@ -1160,82 +1160,88 @@ function applySettings() {
     }
 }
 
-// --- Drag and Drop ---
+// --- Drag and Drop (pointer events) ---
 
-var dragSrcRow = null;
-var dragOverRow = null;
-var dragPosition = null;
+var _drag = { active: false, srcRow: null, overRow: null, pos: null, raf: 0, lastY: 0 };
 
 function initDragAndDrop() {
     var tbody = document.querySelector('#portfolioTable tbody');
     if (!tbody || tbody._dragInit) return;
     tbody._dragInit = true;
 
-    // Tiny transparent drag ghost to avoid expensive row snapshot
-    var dragGhost = document.createElement('div');
-    dragGhost.style.cssText = 'position:fixed;top:-999px;width:1px;height:1px;opacity:0.01;';
-    document.body.appendChild(dragGhost);
+    tbody.addEventListener('pointerdown', function(e) {
+        // Only start drag from the grip area (first cell)
+        var td = e.target.closest('td');
+        if (!td || td !== td.parentElement.cells[0]) return;
+        var row = td.parentElement;
+        if (!row.hasAttribute('data-item-id')) return;
 
-    tbody.addEventListener('dragstart', function(e) {
-        var row = e.target.closest('tr[draggable="true"]');
-        if (!row) return;
-        dragSrcRow = row;
-        row.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', '');
-        e.dataTransfer.setDragImage(dragGhost, 0, 0);
-    });
-
-    tbody.addEventListener('dragover', function(e) {
         e.preventDefault();
-        var row = e.target.closest('tr[draggable="true"]');
-        if (!row || row === dragSrcRow) return;
-        e.dataTransfer.dropEffect = 'move';
-        var rect = row.getBoundingClientRect();
-        var pos = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
-        if (row === dragOverRow && pos === dragPosition) return;
-        clearDragClasses();
-        dragOverRow = row;
-        dragPosition = pos;
-        row.classList.add(pos === 'top' ? 'drag-over-top' : 'drag-over-bottom');
-    });
+        _drag.srcRow = row;
+        _drag.lastY = e.clientY;
 
-    tbody.addEventListener('dragleave', function(e) {
-        var row = e.target.closest('tr[draggable="true"]');
-        if (row && (!e.relatedTarget || !row.contains(e.relatedTarget))) {
-            row.classList.remove('drag-over-top', 'drag-over-bottom');
-            if (row === dragOverRow) { dragOverRow = null; dragPosition = null; }
-        }
-    });
+        var onMove = function(ev) {
+            ev.preventDefault();
+            if (!_drag.active && Math.abs(ev.clientY - _drag.lastY) < 5) return;
+            if (!_drag.active) {
+                _drag.active = true;
+                row.classList.add('dragging');
+            }
+            _drag.lastY = ev.clientY;
+            if (!_drag.raf) {
+                _drag.raf = requestAnimationFrame(function() {
+                    _drag.raf = 0;
+                    updateDragTarget(tbody, _drag.lastY);
+                });
+            }
+        };
 
-    tbody.addEventListener('drop', function(e) {
-        e.preventDefault();
-        if (!dragSrcRow || !dragOverRow || dragSrcRow === dragOverRow) {
-            clearDragClasses();
-            return;
-        }
-        if (dragPosition === 'top') {
-            tbody.insertBefore(dragSrcRow, dragOverRow);
-        } else {
-            tbody.insertBefore(dragSrcRow, dragOverRow.nextSibling);
-        }
-        clearDragClasses();
-        savePortfolioOrder();
-    });
+        var onUp = function() {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            if (_drag.raf) { cancelAnimationFrame(_drag.raf); _drag.raf = 0; }
 
-    tbody.addEventListener('dragend', function() {
-        if (dragSrcRow) dragSrcRow.classList.remove('dragging');
-        clearDragClasses();
-        dragSrcRow = null;
+            if (_drag.active && _drag.overRow && _drag.overRow !== _drag.srcRow) {
+                if (_drag.pos === 'top') {
+                    tbody.insertBefore(_drag.srcRow, _drag.overRow);
+                } else {
+                    tbody.insertBefore(_drag.srcRow, _drag.overRow.nextSibling);
+                }
+                savePortfolioOrder();
+            }
+
+            if (_drag.srcRow) _drag.srcRow.classList.remove('dragging');
+            if (_drag.overRow) _drag.overRow.classList.remove('drag-over-top', 'drag-over-bottom');
+            _drag.active = false;
+            _drag.srcRow = null;
+            _drag.overRow = null;
+            _drag.pos = null;
+        };
+
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
     });
 }
 
-function clearDragClasses() {
-    if (dragOverRow) {
-        dragOverRow.classList.remove('drag-over-top', 'drag-over-bottom');
-        dragOverRow = null;
-        dragPosition = null;
+function updateDragTarget(tbody, clientY) {
+    var rows = tbody.querySelectorAll('tr[data-item-id]');
+    var newOver = null;
+    var newPos = null;
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (r === _drag.srcRow) continue;
+        var rect = r.getBoundingClientRect();
+        if (clientY >= rect.top && clientY <= rect.bottom) {
+            newOver = r;
+            newPos = clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+            break;
+        }
     }
+    if (newOver === _drag.overRow && newPos === _drag.pos) return;
+    if (_drag.overRow) _drag.overRow.classList.remove('drag-over-top', 'drag-over-bottom');
+    _drag.overRow = newOver;
+    _drag.pos = newPos;
+    if (newOver) newOver.classList.add(newPos === 'top' ? 'drag-over-top' : 'drag-over-bottom');
 }
 
 function savePortfolioOrder() {

@@ -981,19 +981,17 @@ body {
 }
 
 /* === Drag and Drop === */
-#portfolioTable tbody tr[draggable="true"] {
-    cursor: grab;
-}
-#portfolioTable tbody tr[draggable="true"] td:first-child {
+#portfolioTable tbody tr[data-item-id] td:first-child {
     position: relative;
     padding-left: 28px;
+    cursor: grab;
 }
-#portfolioTable tbody tr[draggable="true"] td:first-child::before {
+#portfolioTable tbody tr[data-item-id] td:first-child::before {
     content: '\2807';
     position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
     color: var(--text3); font-size: 14px;
 }
-#portfolioTable tbody tr[draggable="true"]:hover td:first-child::before {
+#portfolioTable tbody tr[data-item-id]:hover td:first-child::before {
     color: var(--accent2);
 }
 #portfolioTable tbody tr.dragging {
