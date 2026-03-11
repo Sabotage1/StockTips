@@ -994,14 +994,17 @@ body {
 #portfolioTable tbody tr[data-item-id]:hover td:first-child::before {
     color: var(--accent2);
 }
-#portfolioTable tbody tr.dragging {
-    opacity: 0.25;
+#portfolioTable.is-dragging {
+    user-select: none;
 }
-#portfolioTable tbody tr.drag-over-top {
-    box-shadow: 0 -2px 0 0 var(--accent2) inset;
+#portfolioTable tbody tr.drag-src {
+    position: relative; z-index: 10;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    background: var(--surface-solid);
+    outline: 1px solid var(--accent);
 }
-#portfolioTable tbody tr.drag-over-bottom {
-    box-shadow: 0 2px 0 0 var(--accent2) inset;
+#portfolioTable tbody tr.drag-swap {
+    transition: transform 0.15s ease;
 }
 
 /* === Responsive === */

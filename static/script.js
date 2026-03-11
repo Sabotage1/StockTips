@@ -1160,62 +1160,67 @@ function applySettings() {
     }
 }
 
-// --- Drag and Drop (pointer events) ---
+// --- Drag and Drop (pointer events, live swap) ---
 
-var _drag = { active: false, srcRow: null, overRow: null, pos: null, raf: 0, lastY: 0 };
+var _drag = { active: false, srcRow: null, startY: 0, offsetY: 0, raf: 0, lastY: 0 };
 
 function initDragAndDrop() {
     var tbody = document.querySelector('#portfolioTable tbody');
     if (!tbody || tbody._dragInit) return;
     tbody._dragInit = true;
+    var table = document.getElementById('portfolioTable');
 
     tbody.addEventListener('pointerdown', function(e) {
-        // Only start drag from the grip area (first cell)
         var td = e.target.closest('td');
         if (!td || td !== td.parentElement.cells[0]) return;
         var row = td.parentElement;
         if (!row.hasAttribute('data-item-id')) return;
 
         e.preventDefault();
+        row.setPointerCapture(e.pointerId);
         _drag.srcRow = row;
+        _drag.startY = e.clientY;
+        _drag.offsetY = 0;
         _drag.lastY = e.clientY;
 
         var onMove = function(ev) {
             ev.preventDefault();
-            if (!_drag.active && Math.abs(ev.clientY - _drag.lastY) < 5) return;
+            if (!_drag.active && Math.abs(ev.clientY - _drag.startY) < 5) return;
             if (!_drag.active) {
                 _drag.active = true;
-                row.classList.add('dragging');
+                row.classList.add('drag-src');
+                table.classList.add('is-dragging');
             }
             _drag.lastY = ev.clientY;
+            _drag.offsetY = ev.clientY - _drag.startY;
             if (!_drag.raf) {
                 _drag.raf = requestAnimationFrame(function() {
                     _drag.raf = 0;
-                    updateDragTarget(tbody, _drag.lastY);
+                    dragTick(tbody);
                 });
             }
         };
 
-        var onUp = function() {
+        var onUp = function(ev) {
+            row.releasePointerCapture(ev.pointerId);
             document.removeEventListener('pointermove', onMove);
             document.removeEventListener('pointerup', onUp);
             if (_drag.raf) { cancelAnimationFrame(_drag.raf); _drag.raf = 0; }
 
-            if (_drag.active && _drag.overRow && _drag.overRow !== _drag.srcRow) {
-                if (_drag.pos === 'top') {
-                    tbody.insertBefore(_drag.srcRow, _drag.overRow);
-                } else {
-                    tbody.insertBefore(_drag.srcRow, _drag.overRow.nextSibling);
-                }
-                savePortfolioOrder();
+            row.style.transform = '';
+            row.classList.remove('drag-src');
+            table.classList.remove('is-dragging');
+
+            // Remove swap transitions
+            var all = tbody.querySelectorAll('.drag-swap');
+            for (var i = 0; i < all.length; i++) {
+                all[i].classList.remove('drag-swap');
+                all[i].style.transform = '';
             }
 
-            if (_drag.srcRow) _drag.srcRow.classList.remove('dragging');
-            if (_drag.overRow) _drag.overRow.classList.remove('drag-over-top', 'drag-over-bottom');
+            if (_drag.active) savePortfolioOrder();
             _drag.active = false;
             _drag.srcRow = null;
-            _drag.overRow = null;
-            _drag.pos = null;
         };
 
         document.addEventListener('pointermove', onMove);
@@ -1223,25 +1228,59 @@ function initDragAndDrop() {
     });
 }
 
-function updateDragTarget(tbody, clientY) {
+function dragTick(tbody) {
+    var src = _drag.srcRow;
+    if (!src || !_drag.active) return;
+
+    // Move the dragged row visually
+    src.style.transform = 'translateY(' + _drag.offsetY + 'px)';
+
+    // Check if src center has crossed a sibling's midpoint
+    var srcRect = src.getBoundingClientRect();
+    var srcMid = srcRect.top + srcRect.height / 2;
     var rows = tbody.querySelectorAll('tr[data-item-id]');
-    var newOver = null;
-    var newPos = null;
+    var srcIdx = -1;
     for (var i = 0; i < rows.length; i++) {
-        var r = rows[i];
-        if (r === _drag.srcRow) continue;
-        var rect = r.getBoundingClientRect();
-        if (clientY >= rect.top && clientY <= rect.bottom) {
-            newOver = r;
-            newPos = clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
-            break;
+        if (rows[i] === src) { srcIdx = i; break; }
+    }
+    if (srcIdx < 0) return;
+
+    // Moving down
+    if (_drag.offsetY > 0 && srcIdx < rows.length - 1) {
+        var next = rows[srcIdx + 1];
+        var nextRect = next.getBoundingClientRect();
+        var nextMid = nextRect.top + nextRect.height / 2;
+        if (srcMid > nextMid) {
+            swapRows(tbody, src, next, -srcRect.height);
         }
     }
-    if (newOver === _drag.overRow && newPos === _drag.pos) return;
-    if (_drag.overRow) _drag.overRow.classList.remove('drag-over-top', 'drag-over-bottom');
-    _drag.overRow = newOver;
-    _drag.pos = newPos;
-    if (newOver) newOver.classList.add(newPos === 'top' ? 'drag-over-top' : 'drag-over-bottom');
+    // Moving up
+    if (_drag.offsetY < 0 && srcIdx > 0) {
+        var prev = rows[srcIdx - 1];
+        var prevRect = prev.getBoundingClientRect();
+        var prevMid = prevRect.top + prevRect.height / 2;
+        if (srcMid < prevMid) {
+            swapRows(tbody, prev, src, srcRect.height);
+        }
+    }
+}
+
+function swapRows(tbody, rowA, rowB, animateOffset) {
+    // Animate the displaced row
+    rowB.classList.remove('drag-swap');
+    rowB.style.transform = 'translateY(' + animateOffset + 'px)';
+    // Force reflow so transition plays
+    void rowB.offsetHeight;
+    rowB.classList.add('drag-swap');
+    rowB.style.transform = '';
+
+    // DOM swap: move rowA before rowB's current position
+    tbody.insertBefore(rowB, rowA);
+
+    // Reset dragged row offset since DOM position changed
+    _drag.startY = _drag.lastY;
+    _drag.offsetY = 0;
+    _drag.srcRow.style.transform = '';
 }
 
 function savePortfolioOrder() {
