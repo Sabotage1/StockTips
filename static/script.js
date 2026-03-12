@@ -23,7 +23,7 @@ const modalOverlay = document.getElementById('modalOverlay');
 const modalContent = document.getElementById('modalContent');
 
 // Nav
-document.querySelectorAll('.nav-btn').forEach(btn => {
+document.querySelectorAll('.nav-btn[data-panel]').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
@@ -723,12 +723,7 @@ async function fetchCurrentUser() {
         const data = await resp.json();
         currentUserRole = data.role || 'viewer';
         if (data.settings) userSettings = data.settings;
-        if (currentUserRole === 'admin') {
-            const navUsers = document.getElementById('navUsers');
-            if (navUsers) navUsers.style.display = '';
-            const navUsage = document.getElementById('navUsage');
-            if (navUsage) navUsage.style.display = '';
-        }
+        // Admin nav buttons are now rendered server-side via Jinja2
         // Hide delete buttons for non-admins
         if (currentUserRole !== 'admin') {
             const clearBtn = document.getElementById('clearAllBtn');

@@ -21,34 +21,36 @@
 <!-- Header -->
 <header class="header">
     <div class="header-inner">
-        <div class="logo">
+        <a href="/" class="logo" style="text-decoration:none;color:inherit" onclick="event.preventDefault();document.querySelector('.nav-btn[data-panel=&quot;analyze&quot;]').click();">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#lg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <defs><linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6c5ce7"/></linearGradient></defs>
                 <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>
             </svg>
             <span>Stock<em>Tips</em></span>
-        </div>
+        </a>
         <nav class="nav">
             <button class="nav-btn active" data-panel="analyze">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                 Analyze
             </button>
-            <button class="nav-btn" data-panel="history">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                History
-            </button>
             <button class="nav-btn" data-panel="portfolio">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><path d="M12 4v6"/></svg>
                 Portfolio
             </button>
-            <button class="nav-btn" data-panel="usage" id="navUsage" style="display:none">
+            <button class="nav-btn" data-panel="history">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </button>
+            {% if user_role == 'admin' %}
+            <button class="nav-btn" data-panel="usage" id="navUsage">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="2" width="4" height="19" rx="1"/></svg>
                 API Usage
             </button>
-            <button class="nav-btn" data-panel="users" id="navUsers" style="display:none">
+            <button class="nav-btn" data-panel="users" id="navUsers">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                 Users
             </button>
+            {% endif %}
             <a href="/logout" class="nav-btn" style="text-decoration:none;margin-left:8px;color:var(--text3)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Logout

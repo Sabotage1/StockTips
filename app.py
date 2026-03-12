@@ -241,7 +241,14 @@ async def setup_webhook():
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Serve the main web dashboard."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    ensure_db()
+    session = _get_session(request)
+    user_role = ""
+    if session:
+        user = get_user_by_username(session["user"])
+        if user:
+            user_role = user.role
+    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role})
 
 
 @app.post("/api/analyze")
