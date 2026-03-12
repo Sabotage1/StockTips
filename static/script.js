@@ -826,16 +826,62 @@ function isMarketOpen() {
     return day >= 1 && day <= 5 && time >= 570 && time < 960; // 9:30-16:00
 }
 
+function getMarketCountdown() {
+    var now = new Date();
+    var est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    var day = est.getDay(); // 0=Sun, 6=Sat
+    var timeMins = est.getHours() * 60 + est.getMinutes();
+    var open = isMarketOpen();
+
+    // Target time in minutes from midnight ET
+    var targetTime = open ? 960 : 570; // close at 16:00, open at 9:30
+    var daysAhead = 0;
+
+    if (open) {
+        // Market is open, countdown to close (same day)
+        daysAhead = 0;
+    } else if (day >= 1 && day <= 5 && timeMins < 570) {
+        // Weekday before open
+        daysAhead = 0;
+    } else {
+        // After close or weekend — find next weekday
+        var d = day;
+        if (day >= 1 && day <= 5 && timeMins >= 960) {
+            daysAhead = 1;
+            d = (day + 1) % 7;
+        } else {
+            daysAhead = 0;
+            d = day;
+        }
+        while (d === 0 || d === 6) {
+            daysAhead++;
+            d = (d + 1) % 7;
+        }
+    }
+
+    var diffMins = targetTime - timeMins + daysAhead * 1440;
+    if (diffMins < 0) diffMins += 1440;
+
+    var h = Math.floor(diffMins / 60);
+    var m = diffMins % 60;
+
+    var parts = [];
+    if (h > 0) parts.push(h + 'h');
+    parts.push(m + 'm');
+    return parts.join(' ');
+}
+
 function updateMarketStatus() {
-    const dot = document.getElementById('marketDot');
-    const text = document.getElementById('marketStatusText');
+    var dot = document.getElementById('marketDot');
+    var text = document.getElementById('marketStatusText');
     if (!dot || !text) return;
+    var countdown = getMarketCountdown();
     if (isMarketOpen()) {
         dot.classList.add('open');
-        text.textContent = 'Market Open';
+        text.textContent = 'Market Open \u00B7 Closes in ' + countdown;
     } else {
         dot.classList.remove('open');
-        text.textContent = 'Market Closed';
+        text.textContent = 'Market Closed \u00B7 Opens in ' + countdown;
     }
 }
 
@@ -1009,7 +1055,7 @@ function startPortfolioRefresh() {
     portfolioRefreshCountdown = 60;
     portfolioRefreshTimer = setInterval(function() {
         portfolioRefreshCountdown--;
-        const timerEl = document.getElementById('refreshTimer');
+        var timerEl = document.getElementById('refreshTimer');
         if (timerEl) timerEl.textContent = 'Next refresh: ' + portfolioRefreshCountdown + 's';
         if (portfolioRefreshCountdown <= 0) {
             portfolioRefreshCountdown = 60;
