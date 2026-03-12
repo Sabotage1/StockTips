@@ -181,6 +181,15 @@ def get_db():
         db.close()
 
 
+def _delete_old_analyses(db, ticker: str, hours: int = 24):
+    """Delete previous analyses for the same ticker from the past N hours."""
+    cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
+    db.query(TickerAnalysis).filter(
+        TickerAnalysis.ticker == ticker.upper(),
+        TickerAnalysis.created_at >= cutoff,
+    ).delete(synchronize_session=False)
+
+
 def save_analysis(
     ticker: str,
     company_name: str,
@@ -200,6 +209,7 @@ def save_analysis(
 ) -> TickerAnalysis:
     db = SessionLocal()
     try:
+        _delete_old_analyses(db, ticker)
         record = TickerAnalysis(
             ticker=ticker.upper(),
             company_name=company_name,
