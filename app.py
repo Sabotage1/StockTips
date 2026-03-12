@@ -31,6 +31,7 @@ from database import (
     delete_friendship, are_friends,
     create_message, get_conversation_messages, get_conversations, mark_messages_read,
     create_tip, get_tips, get_tip_by_id, mark_tip_read, get_tips_in_conversation,
+    delete_message, delete_tip, toggle_reaction, get_reactions_for_items,
     create_notification, get_notifications, get_unread_notification_counts,
     mark_notification_read, mark_all_notifications_read,
 )
@@ -1409,6 +1410,14 @@ async def api_messages_get(request: Request, friend_id: int):
         m["type"] = "message"
     timeline = msgs + tips
     timeline.sort(key=lambda x: x.get("created_at", ""))
+    # Attach reactions to timeline items
+    msg_ids = [item["id"] for item in timeline if item.get("type") == "message"]
+    tip_ids = [item["id"] for item in timeline if item.get("type") == "tip"]
+    msg_reactions = get_reactions_for_items("message", msg_ids) if msg_ids else {}
+    tip_reactions = get_reactions_for_items("tip", tip_ids) if tip_ids else {}
+    for item in timeline:
+        rmap = msg_reactions if item.get("type") == "message" else tip_reactions
+        item["reactions"] = rmap.get(item["id"], [])
     return JSONResponse(timeline)
 
 
@@ -1486,7 +1495,13 @@ async def api_tip_send(request: Request, friend_id: int):
             pass
     message = str(body.get("message", ""))
     share_token = body.get("analysis_share_token") or None
-    tip = create_tip(user_id, friend_id, ticker, breakout_price, stop_loss, message, share_token)
+    expiry_hours = None
+    if body.get("expiry_hours"):
+        try:
+            expiry_hours = int(body["expiry_hours"])
+        except (ValueError, TypeError):
+            pass
+    tip = create_tip(user_id, friend_id, ticker, breakout_price, stop_loss, message, share_token, expiry_hours)
     session = _get_session(request)
     sender_name = session["user"] if session else ""
     create_notification(
@@ -1540,6 +1555,47 @@ async def api_tip_mark_read(request: Request, tip_id: int):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     mark_tip_read(tip_id, user_id)
     return JSONResponse({"ok": True})
+
+
+@app.delete("/api/messages/{message_id}")
+async def api_message_delete(request: Request, message_id: int):
+    """Delete a sent message (sender only)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not delete_message(message_id, user_id):
+        return JSONResponse({"error": "Not found or not your message"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/tips/{tip_id}")
+async def api_tip_delete(request: Request, tip_id: int):
+    """Delete a sent tip (sender only)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not delete_tip(tip_id, user_id):
+        return JSONResponse({"error": "Not found or not your tip"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/reactions")
+async def api_reaction_toggle(request: Request):
+    """Toggle a reaction on a message or tip."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    target_type = str(body.get("target_type", ""))
+    target_id = body.get("target_id")
+    emoji = str(body.get("emoji", ""))
+    if target_type not in ("message", "tip") or not target_id or not emoji:
+        return JSONResponse({"error": "Invalid params"}, status_code=400)
+    result = toggle_reaction(user_id, target_type, int(target_id), emoji)
+    return JSONResponse({"ok": True, **result})
 
 
 # --- Notifications API ---

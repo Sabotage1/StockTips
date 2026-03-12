@@ -2,7 +2,7 @@ import datetime
 import json
 import uuid
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, UniqueConstraint, and_
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from config import DATABASE_URL
@@ -155,7 +155,22 @@ class Tip(Base):
     stop_loss = Column(Float, nullable=True)
     message = Column(Text, default="")
     analysis_share_token = Column(String(32), nullable=True)
+    expires_at = Column(DateTime, nullable=True)
     is_read = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Reaction(Base):
+    __tablename__ = "reactions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "target_type", "target_id", "emoji", name="uq_reaction"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    target_type = Column(String(20), nullable=False)  # "message" or "tip"
+    target_id = Column(Integer, nullable=False)
+    emoji = Column(String(30), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -192,6 +207,7 @@ def _migrate_add_columns():
             ("ticker_analyses", "web_user", "VARCHAR(100) DEFAULT ''"),
             ("portfolio_items", "sort_order", "INTEGER DEFAULT 0"),
             ("users", "user_code", "VARCHAR(5)"),
+            ("tips", "expires_at", "DATETIME"),
         ]
         for table, col, col_type in migrations:
             try:
@@ -1155,9 +1171,13 @@ def create_tip(sender_id: int, receiver_id: int, ticker: str,
                breakout_price: Optional[float] = None,
                stop_loss: Optional[float] = None,
                message: str = "",
-               analysis_share_token: Optional[str] = None) -> Tip:
+               analysis_share_token: Optional[str] = None,
+               expiry_hours: Optional[int] = None) -> Tip:
     db = SessionLocal()
     try:
+        expires_at = None
+        if expiry_hours and expiry_hours > 0:
+            expires_at = datetime.datetime.utcnow() + datetime.timedelta(hours=expiry_hours)
         tip = Tip(
             sender_id=sender_id,
             receiver_id=receiver_id,
@@ -1166,6 +1186,7 @@ def create_tip(sender_id: int, receiver_id: int, ticker: str,
             stop_loss=stop_loss,
             message=message[:2000],
             analysis_share_token=analysis_share_token,
+            expires_at=expires_at,
         )
         db.add(tip)
         db.commit()
@@ -1196,6 +1217,7 @@ def get_tips(user_id: int, direction: str = "received") -> List[dict]:
                 "stop_loss": t.stop_loss,
                 "message": t.message,
                 "analysis_share_token": t.analysis_share_token,
+                "expires_at": t.expires_at.isoformat() if t.expires_at else None,
                 "is_read": t.is_read,
                 "created_at": t.created_at.isoformat() if t.created_at else "",
             })
@@ -1223,6 +1245,7 @@ def get_tip_by_id(tip_id: int) -> Optional[dict]:
             "stop_loss": t.stop_loss,
             "message": t.message,
             "analysis_share_token": t.analysis_share_token,
+            "expires_at": t.expires_at.isoformat() if t.expires_at else None,
             "is_read": t.is_read,
             "created_at": t.created_at.isoformat() if t.created_at else "",
         }
@@ -1345,9 +1368,93 @@ def get_tips_in_conversation(user_id: int, other_id: int) -> List[dict]:
             "stop_loss": t.stop_loss,
             "message": t.message,
             "analysis_share_token": t.analysis_share_token,
+            "expires_at": t.expires_at.isoformat() if t.expires_at else None,
             "is_read": t.is_read,
             "created_at": t.created_at.isoformat() if t.created_at else "",
             "type": "tip",
         } for t in rows]
+    finally:
+        db.close()
+
+
+# --- Delete message / tip ---
+
+def delete_message(message_id: int, user_id: int) -> bool:
+    """Delete a message (sender only)."""
+    db = SessionLocal()
+    try:
+        msg = db.query(Message).filter(Message.id == message_id, Message.sender_id == user_id).first()
+        if not msg:
+            return False
+        db.delete(msg)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def delete_tip(tip_id: int, user_id: int) -> bool:
+    """Delete a tip (sender only)."""
+    db = SessionLocal()
+    try:
+        tip = db.query(Tip).filter(Tip.id == tip_id, Tip.sender_id == user_id).first()
+        if not tip:
+            return False
+        db.delete(tip)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+# --- Reactions ---
+
+def toggle_reaction(user_id: int, target_type: str, target_id: int, emoji: str) -> dict:
+    """Add or remove a reaction. Returns {"action": "added"/"removed", "emoji": ...}."""
+    db = SessionLocal()
+    try:
+        existing = db.query(Reaction).filter(
+            and_(Reaction.user_id == user_id, Reaction.target_type == target_type,
+                 Reaction.target_id == target_id, Reaction.emoji == emoji)
+        ).first()
+        if existing:
+            db.delete(existing)
+            db.commit()
+            return {"action": "removed", "emoji": emoji}
+        else:
+            r = Reaction(user_id=user_id, target_type=target_type, target_id=target_id, emoji=emoji)
+            db.add(r)
+            db.commit()
+            return {"action": "added", "emoji": emoji}
+    finally:
+        db.close()
+
+
+def get_reactions_for_items(target_type: str, target_ids: List[int]) -> dict:
+    """Batch fetch reactions grouped by target_id.
+    Returns {target_id: [{"emoji": ..., "count": ..., "user_ids": [...]}, ...]}
+    """
+    if not target_ids:
+        return {}
+    db = SessionLocal()
+    try:
+        rows = db.query(Reaction).filter(
+            Reaction.target_type == target_type,
+            Reaction.target_id.in_(target_ids)
+        ).all()
+        # Group by target_id -> emoji
+        grouped = {}  # type: dict
+        for r in rows:
+            tid = r.target_id
+            if tid not in grouped:
+                grouped[tid] = {}
+            if r.emoji not in grouped[tid]:
+                grouped[tid][r.emoji] = []
+            grouped[tid][r.emoji].append(r.user_id)
+        # Convert to list format
+        result = {}
+        for tid, emojis in grouped.items():
+            result[tid] = [{"emoji": e, "count": len(uids), "user_ids": uids} for e, uids in emojis.items()]
+        return result
     finally:
         db.close()

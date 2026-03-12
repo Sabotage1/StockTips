@@ -2279,6 +2279,88 @@ var _lastNotifCounts = { total: 0 };
 var _currentUserId = null;
 var _tipsDirection = 'received';
 
+// --- Reactions ---
+var REACTION_EMOJIS = {
+    'thumbsup': '\uD83D\uDC4D',
+    'fire': '\uD83D\uDD25',
+    'rocket': '\uD83D\uDE80',
+    'chart': '\uD83D\uDCC8',
+    'clap': '\uD83D\uDC4F',
+    'hundred': '\uD83D\uDCAF'
+};
+
+// --- Tip Expiry Helpers ---
+function isTipExpired(tip) {
+    if (!tip.expires_at) return false;
+    return new Date(tip.expires_at + 'Z') <= new Date();
+}
+
+function formatExpiry(tip) {
+    if (!tip.expires_at) return '';
+    var exp = new Date(tip.expires_at + 'Z');
+    var now = new Date();
+    var diffMs = exp - now;
+    if (diffMs <= 0) return 'Expired';
+    var diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return diffMins + 'm left';
+    var diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return diffHours + 'h left';
+    var diffDays = Math.floor(diffHours / 24);
+    return diffDays + 'd left';
+}
+
+// --- Delete Handlers ---
+async function deleteChatMessage(id) {
+    if (!confirm('Delete this message?')) return;
+    try {
+        var resp = await fetch(API + '/api/messages/' + id, { method: 'DELETE' });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Delete failed'); return; }
+        if (_chatFriendId) loadChatMessages();
+        if (_sidebarChatFriendId) loadSidebarChatMessages();
+    } catch (e) { console.error('Delete message error:', e); }
+}
+
+async function deleteTip(id) {
+    if (!confirm('Delete this tip?')) return;
+    try {
+        var resp = await fetch(API + '/api/tips/' + id, { method: 'DELETE' });
+        if (!resp.ok) { var err = await resp.json(); alert(err.error || 'Delete failed'); return; }
+        if (_chatFriendId) loadChatMessages();
+        if (_sidebarChatFriendId) loadSidebarChatMessages();
+        if (_socialCurrentTab === 'tips') loadTips();
+        if (_sidebarCurrentTab === 'tips') loadSidebarTips();
+    } catch (e) { console.error('Delete tip error:', e); }
+}
+
+// --- Reaction Helpers ---
+async function toggleReaction(targetType, targetId, emoji) {
+    try {
+        await fetch(API + '/api/reactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_type: targetType, target_id: targetId, emoji: emoji }),
+        });
+        if (_chatFriendId) loadChatMessages();
+        if (_sidebarChatFriendId) loadSidebarChatMessages();
+    } catch (e) { console.error('Reaction error:', e); }
+}
+
+function renderReactionPicker(targetType, targetId) {
+    var btns = Object.keys(REACTION_EMOJIS).map(function(key) {
+        return '<button class="reaction-picker-btn" onclick="event.stopPropagation();toggleReaction(\'' + targetType + '\',' + targetId + ',\'' + key + '\')">' + REACTION_EMOJIS[key] + '</button>';
+    }).join('');
+    return '<div class="reaction-picker">' + btns + '</div>';
+}
+
+function renderReactions(reactions) {
+    if (!reactions || !reactions.length) return '';
+    return '<div class="reaction-badges">' + reactions.map(function(r) {
+        var emojiChar = REACTION_EMOJIS[r.emoji] || r.emoji;
+        var isOwn = _currentUserId && r.user_ids && r.user_ids.indexOf(_currentUserId) >= 0;
+        return '<span class="reaction-badge' + (isOwn ? ' own' : '') + '">' + emojiChar + '<span class="reaction-count">' + r.count + '</span></span>';
+    }).join('') + '</div>';
+}
+
 // --- Notification Polling ---
 
 function startNotificationPolling() {
@@ -2588,9 +2670,15 @@ async function loadChatMessages() {
             }
             var isSent = _currentUserId ? item.sender_id === _currentUserId : item.sender_id !== _chatFriendId;
             var timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-            return '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+            var deleteBtn = isSent ? '<button class="chat-delete-btn" onclick="event.stopPropagation();deleteChatMessage(' + item.id + ')" title="Delete">&times;</button>' : '';
+            return '<div class="chat-bubble-wrap ' + (isSent ? 'sent' : 'received') + '">' +
+                '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+                deleteBtn +
                 escapeHtml(item.content) +
-                '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+                '<div class="chat-bubble-time">' + timeStr + '</div></div>' +
+                renderReactions(item.reactions) +
+                renderReactionPicker('message', item.id) +
+                '</div>';
         }).join('');
         el.scrollTop = el.scrollHeight;
     } catch (e) { console.error('Chat load error:', e); }
@@ -2599,17 +2687,27 @@ async function loadChatMessages() {
 function renderTipBubble(tip) {
     var isSent = _currentUserId ? tip.sender_id === _currentUserId : tip.sender_id !== _chatFriendId;
     var timeStr = tip.created_at ? new Date(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    var expired = isTipExpired(tip);
+    var expiryStr = formatExpiry(tip);
     var details = '';
     if (tip.breakout_price) details += 'Breakout: $' + tip.breakout_price.toFixed(2) + ' ';
     if (tip.stop_loss) details += 'Stop: $' + tip.stop_loss.toFixed(2);
     var linkHtml = tip.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + tip.analysis_share_token + '" target="_blank">View Analysis</a>' : '';
-    return '<div class="chat-bubble tip-bubble ' + (isSent ? 'sent' : 'received') + '">' +
-        '<div class="tip-bubble-header">Stock Tip</div>' +
+    var deleteBtn = isSent ? '<button class="chat-delete-btn" onclick="event.stopPropagation();deleteTip(' + tip.id + ')" title="Delete">&times;</button>' : '';
+    var expiryBadge = expiryStr ? '<span class="tip-expiry-badge' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
+    return '<div class="chat-bubble-wrap ' + (isSent ? 'sent' : 'received') + '">' +
+        '<div class="chat-bubble tip-bubble ' + (isSent ? 'sent' : 'received') + (expired ? ' tip-expired' : '') + '">' +
+        deleteBtn +
+        '<div class="tip-bubble-header">Stock Tip' + expiryBadge + '</div>' +
         '<div class="tip-bubble-ticker">' + escapeHtml(tip.ticker) + '</div>' +
         (details ? '<div class="tip-bubble-detail">' + details + '</div>' : '') +
         (tip.message ? '<div style="margin-top:4px;font-size:13px">' + escapeHtml(tip.message) + '</div>' : '') +
         linkHtml +
-        '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+        '<div class="chat-bubble-time">' + timeStr + '</div>' +
+        '</div>' +
+        renderReactions(tip.reactions) +
+        renderReactionPicker('tip', tip.id) +
+        '</div>';
 }
 
 async function sendChatMessage() {
@@ -2682,9 +2780,14 @@ async function loadTips() {
             if (t.stop_loss) details += 'Stop: $' + t.stop_loss.toFixed(2);
             var timeStr = t.created_at ? formatTime(t.created_at) : '';
             var unreadDot = (!t.is_read && _tipsDirection === 'received') ? '<span class="tip-unread-dot"></span>' : '';
-            return '<div class="tip-card" onclick="viewTipDetail(' + t.id + ')">' +
+            var expired = isTipExpired(t);
+            var expiryStr = formatExpiry(t);
+            var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
+            var deleteBtn = (_tipsDirection === 'sent') ? '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' : '';
+            return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
+                deleteBtn +
                 '<div class="tip-card-header">' +
-                    '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span></span>' +
+                    '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
                     '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
                 '</div>' +
                 (details ? '<div class="tip-card-details">' + details + '</div>' : '') +
@@ -2704,16 +2807,22 @@ async function viewTipDetail(tipId) {
         var details = '';
         if (tip.breakout_price) details += '<div class="target-row"><span class="target-label">Breakout Price</span><span class="target-val">$' + tip.breakout_price.toFixed(2) + '</span></div>';
         if (tip.stop_loss) details += '<div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">$' + tip.stop_loss.toFixed(2) + '</span></div>';
+        var expired = isTipExpired(tip);
+        var expiryStr = formatExpiry(tip);
+        var expiryBadge = expiryStr ? '<span class="badge' + (expired ? ' badge-sell' : ' badge-info') + '" style="font-size:10px">' + expiryStr + '</span>' : '';
+        var isSender = _currentUserId && tip.sender_id === _currentUserId;
+        var deleteHtml = isSender ? '<button class="btn-clear-all" style="margin-top:12px;font-size:12px" onclick="deleteTip(' + tip.id + ');modalOverlay.classList.remove(\'active\')">Delete Tip</button>' : '';
         modalContent.innerHTML =
             '<div class="result-hero" style="margin-bottom:0">' +
                 '<div class="result-top"><span class="result-ticker">' + escapeHtml(tip.ticker) + '</span></div>' +
-                '<div class="badges"><span class="badge badge-info">Stock Tip</span></div>' +
+                '<div class="badges"><span class="badge badge-info">Stock Tip</span>' + expiryBadge + '</div>' +
                 '<p style="color:var(--text2);font-size:13px;margin-top:8px">From: ' + escapeHtml(tip.sender_username) + ' &rarr; ' + escapeHtml(tip.receiver_username) + '</p>' +
                 '<p style="color:var(--text3);font-size:12px">' + (tip.created_at ? new Date(tip.created_at).toLocaleString() : '') + '</p>' +
             '</div>' +
             (details ? '<div class="card" style="margin-top:16px"><div class="card-title">Trade Setup</div>' + details + '</div>' : '') +
             (tip.message ? '<div class="card" style="margin-top:12px"><div class="card-title">Message</div><div class="full-analysis">' + escapeHtml(tip.message) + '</div></div>' : '') +
-            (tip.analysis_share_token ? '<div style="margin-top:12px"><a href="/share/' + tip.analysis_share_token + '" target="_blank" class="tip-bubble-link" style="font-size:13px">View Full Analysis</a></div>' : '');
+            (tip.analysis_share_token ? '<div style="margin-top:12px"><a href="/share/' + tip.analysis_share_token + '" target="_blank" class="tip-bubble-link" style="font-size:13px">View Full Analysis</a></div>' : '') +
+            deleteHtml;
         modalOverlay.classList.add('active');
     } catch (e) { console.error('Tip detail error:', e); }
 }
@@ -2731,6 +2840,7 @@ function openTipModal(friendId, friendName) {
     document.getElementById('tipStopLoss').value = '';
     document.getElementById('tipMessage').value = '';
     document.getElementById('tipShareToken').value = '';
+    document.getElementById('tipExpiry').value = '';
     document.getElementById('tipError').style.display = 'none';
     document.getElementById('tipModalOverlay').classList.add('active');
     document.getElementById('tipTicker').focus();
@@ -2792,8 +2902,8 @@ function selectFriendForTip(friendId, friendName, ticker, shareToken, breakoutPr
 function prefillTipFields(ticker, shareToken, breakoutPrice, stopLoss) {
     document.getElementById('tipTicker').value = ticker || '';
     document.getElementById('tipShareToken').value = shareToken || '';
-    if (breakoutPrice) document.getElementById('tipBreakout').value = breakoutPrice;
-    if (stopLoss) document.getElementById('tipStopLoss').value = stopLoss;
+    if (breakoutPrice) document.getElementById('tipBreakout').value = Math.round(parseFloat(breakoutPrice));
+    if (stopLoss) document.getElementById('tipStopLoss').value = Math.round(parseFloat(stopLoss));
 }
 
 async function submitTip() {
@@ -2803,6 +2913,7 @@ async function submitTip() {
     var stopLoss = document.getElementById('tipStopLoss').value;
     var message = document.getElementById('tipMessage').value;
     var shareToken = document.getElementById('tipShareToken').value;
+    var expiryHours = document.getElementById('tipExpiry').value;
     var errEl = document.getElementById('tipError');
     if (!ticker) {
         errEl.textContent = 'Ticker is required';
@@ -2814,6 +2925,7 @@ async function submitTip() {
         if (breakout) body.breakout_price = parseFloat(breakout);
         if (stopLoss) body.stop_loss = parseFloat(stopLoss);
         if (shareToken) body.analysis_share_token = shareToken;
+        if (expiryHours) body.expiry_hours = parseInt(expiryHours);
         var resp = await fetch(API + '/api/tips/' + friendId, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2970,9 +3082,15 @@ async function loadSidebarChatMessages() {
             }
             var isSent = _currentUserId ? item.sender_id === _currentUserId : item.sender_id !== _sidebarChatFriendId;
             var timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-            return '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+            var deleteBtn = isSent ? '<button class="chat-delete-btn" onclick="event.stopPropagation();deleteChatMessage(' + item.id + ')" title="Delete">&times;</button>' : '';
+            return '<div class="chat-bubble-wrap ' + (isSent ? 'sent' : 'received') + '">' +
+                '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+                deleteBtn +
                 escapeHtml(item.content) +
-                '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+                '<div class="chat-bubble-time">' + timeStr + '</div></div>' +
+                renderReactions(item.reactions) +
+                renderReactionPicker('message', item.id) +
+                '</div>';
         }).join('');
         el.scrollTop = el.scrollHeight;
     } catch (e) { console.error('Sidebar chat load error:', e); }
@@ -2981,17 +3099,27 @@ async function loadSidebarChatMessages() {
 function renderSidebarTipBubble(tip) {
     var isSent = _currentUserId ? tip.sender_id === _currentUserId : tip.sender_id !== _sidebarChatFriendId;
     var timeStr = tip.created_at ? new Date(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    var expired = isTipExpired(tip);
+    var expiryStr = formatExpiry(tip);
     var details = '';
     if (tip.breakout_price) details += 'Breakout: $' + tip.breakout_price.toFixed(2) + ' ';
     if (tip.stop_loss) details += 'Stop: $' + tip.stop_loss.toFixed(2);
     var linkHtml = tip.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + tip.analysis_share_token + '" target="_blank">View Analysis</a>' : '';
-    return '<div class="chat-bubble tip-bubble ' + (isSent ? 'sent' : 'received') + '">' +
-        '<div class="tip-bubble-header">Stock Tip</div>' +
+    var deleteBtn = isSent ? '<button class="chat-delete-btn" onclick="event.stopPropagation();deleteTip(' + tip.id + ')" title="Delete">&times;</button>' : '';
+    var expiryBadge = expiryStr ? '<span class="tip-expiry-badge' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
+    return '<div class="chat-bubble-wrap ' + (isSent ? 'sent' : 'received') + '">' +
+        '<div class="chat-bubble tip-bubble ' + (isSent ? 'sent' : 'received') + (expired ? ' tip-expired' : '') + '">' +
+        deleteBtn +
+        '<div class="tip-bubble-header">Stock Tip' + expiryBadge + '</div>' +
         '<div class="tip-bubble-ticker">' + escapeHtml(tip.ticker) + '</div>' +
         (details ? '<div class="tip-bubble-detail">' + details + '</div>' : '') +
         (tip.message ? '<div style="margin-top:4px;font-size:13px">' + escapeHtml(tip.message) + '</div>' : '') +
         linkHtml +
-        '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+        '<div class="chat-bubble-time">' + timeStr + '</div>' +
+        '</div>' +
+        renderReactions(tip.reactions) +
+        renderReactionPicker('tip', tip.id) +
+        '</div>';
 }
 
 async function sendSidebarChatMessage() {
@@ -3077,9 +3205,14 @@ async function loadSidebarTips() {
             if (t.stop_loss) details += 'Stop: $' + t.stop_loss.toFixed(2);
             var timeStr = t.created_at ? formatTime(t.created_at) : '';
             var unreadDot = (!t.is_read && _sidebarTipsDirection === 'received') ? '<span class="tip-unread-dot"></span>' : '';
-            return '<div class="tip-card" onclick="viewTipDetail(' + t.id + ')">' +
+            var expired = isTipExpired(t);
+            var expiryStr = formatExpiry(t);
+            var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
+            var deleteBtn = (_sidebarTipsDirection === 'sent') ? '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' : '';
+            return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
+                deleteBtn +
                 '<div class="tip-card-header">' +
-                    '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span></span>' +
+                    '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
                     '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
                 '</div>' +
                 (details ? '<div class="tip-card-details">' + details + '</div>' : '') +

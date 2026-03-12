@@ -1379,7 +1379,9 @@ body {
     font-size: 13px;
     line-height: 1.5;
     word-wrap: break-word;
+    position: relative;
 }
+.chat-bubble-wrap .chat-bubble { max-width: 100%; }
 .chat-bubble.sent {
     align-self: flex-end;
     background: var(--accent);
@@ -1554,6 +1556,137 @@ body {
     display: inline-block;
     margin-right: 6px;
 }
+
+/* === Chat Bubble Wrap (for reactions/delete) === */
+.chat-bubble-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+    margin-bottom: 4px;
+}
+.chat-bubble-wrap.sent { align-self: flex-end; align-items: flex-end; }
+.chat-bubble-wrap.received { align-self: flex-start; align-items: flex-start; }
+
+/* === Delete Buttons === */
+.chat-delete-btn {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    background: none;
+    border: none;
+    color: var(--text3);
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 2;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.chat-bubble:hover .chat-delete-btn { opacity: 0.7; }
+.chat-delete-btn:hover { opacity: 1 !important; color: var(--red); }
+
+.tip-card-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--text3);
+    font-size: 18px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 2;
+    line-height: 1;
+    padding: 2px 4px;
+}
+.tip-card { position: relative; }
+.tip-card:hover .tip-card-delete { opacity: 0.7; }
+.tip-card-delete:hover { opacity: 1 !important; color: var(--red); }
+
+/* === Expired Tips === */
+.tip-expired { opacity: 0.5; }
+.tip-expired .tip-bubble-ticker { text-decoration: line-through; }
+.tip-card.tip-expired .tip-card-ticker { text-decoration: line-through; }
+
+/* === Expiry Badges === */
+.tip-expiry-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+    background: var(--yellow-bg);
+    color: var(--yellow);
+    font-weight: 600;
+    vertical-align: middle;
+}
+.tip-expiry-badge.expired {
+    background: var(--red-bg);
+    color: var(--red);
+}
+.tip-expiry-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+    background: var(--yellow-bg);
+    color: var(--yellow);
+    font-weight: 600;
+    vertical-align: middle;
+}
+.tip-expiry-tag.expired {
+    background: var(--red-bg);
+    color: var(--red);
+}
+
+/* === Reaction Picker === */
+.reaction-picker {
+    display: none;
+    position: relative;
+    margin-top: 2px;
+    gap: 2px;
+    z-index: 3;
+}
+.chat-bubble-wrap:hover .reaction-picker { display: flex; }
+.reaction-picker-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 5px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: background 0.15s, transform 0.15s;
+}
+.reaction-picker-btn:hover { background: var(--surface2); transform: scale(1.15); }
+
+/* === Reaction Badges === */
+.reaction-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+.reaction-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    cursor: default;
+}
+.reaction-badge.own {
+    border-color: var(--accent);
+    background: rgba(124,108,240,0.1);
+}
+.reaction-count { font-size: 11px; color: var(--text2); }
 
 /* === Toast Notifications === */
 .toast-container {
