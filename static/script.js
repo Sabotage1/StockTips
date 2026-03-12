@@ -887,7 +887,24 @@ function updateMarketStatus() {
 
 async function loadPortfolio() {
     updateMarketStatus();
+    // Show loading spinner on initial load
+    var tableWrap = document.getElementById('portfolioTableWrap');
+    var summary = document.getElementById('portfolioSummary');
+    var pieWrap = document.getElementById('portfolioPieWrap');
+    var addForm = document.querySelector('.portfolio-add-form');
+    var pfLoading = document.getElementById('portfolioLoading');
+    if (!portfolioData) {
+        if (tableWrap) tableWrap.style.display = 'none';
+        if (summary) summary.style.display = 'none';
+        if (pieWrap) pieWrap.style.display = 'none';
+        if (addForm) addForm.style.display = 'none';
+        if (pfLoading) pfLoading.style.display = '';
+    }
     await refreshPortfolioPrices();
+    if (pfLoading) pfLoading.style.display = 'none';
+    if (tableWrap) tableWrap.style.display = '';
+    if (summary) summary.style.display = '';
+    if (addForm) addForm.style.display = '';
     startPortfolioRefresh();
 }
 
