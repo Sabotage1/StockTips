@@ -355,11 +355,28 @@ function renderResult(data) {
 }
 
 // History
+var historyScope = 'user'; // 'user' or 'global' (admin only)
+
+function toggleHistoryScope() {
+    historyScope = historyScope === 'user' ? 'global' : 'user';
+    loadHistory();
+}
+
 async function loadHistory() {
     const ticker = filterTicker.value.trim().toUpperCase();
     const source = filterSource.value;
+    const isAdmin = currentUserRole === 'admin';
     let url = `${API}/api/history?days=30`;
     if (ticker) url += `&ticker=${ticker}`;
+    if (isAdmin && historyScope === 'global') url += '&scope=global';
+
+    // Show/hide global toggle button for admins
+    var globalToggle = document.getElementById('globalHistoryToggle');
+    if (globalToggle) {
+        globalToggle.style.display = isAdmin ? '' : 'none';
+        globalToggle.textContent = historyScope === 'global' ? 'My History' : 'Global History';
+        globalToggle.className = historyScope === 'global' ? 'btn-global-history active' : 'btn-global-history';
+    }
 
     try {
         const resp = await fetch(url);
@@ -371,12 +388,12 @@ async function loadHistory() {
         document.getElementById('statSells').textContent = records.filter(r => r.recommendation.startsWith('SELL')).length;
         document.getElementById('statHolds').textContent = records.filter(r => r.recommendation === 'HOLD').length;
 
-        const isAdmin = currentUserRole === 'admin';
-        const colSpan = isAdmin ? 9 : 8;
+        var showUserCol = isAdmin && historyScope === 'global';
+        const colSpan = showUserCol ? 9 : 8;
 
         // Show/hide the User column header
         const userTh = document.getElementById('thUser');
-        if (userTh) userTh.style.display = isAdmin ? '' : 'none';
+        if (userTh) userTh.style.display = showUserCol ? '' : 'none';
 
         if (!records.length) {
             historyBody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-row">No analysis history yet</td></tr>`;
@@ -395,7 +412,7 @@ async function loadHistory() {
                 <td style="font-family:'JetBrains Mono',monospace">${p}</td>
                 <td><span class="badge ${cls}" style="font-size:10px;padding:3px 8px">${r.recommendation}</span></td>
                 <td>${r.confidence}</td>
-                ${isAdmin ? `<td style="color:var(--text2);font-size:12px">${requestedBy}</td>` : ''}
+                ${showUserCol ? `<td style="color:var(--text2);font-size:12px">${requestedBy}</td>` : ''}
                 <td><span class="source-badge ${src}">${r.source}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td style="display:flex;gap:6px;align-items:center">

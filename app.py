@@ -347,10 +347,22 @@ async def api_analyze(request: Request):
 
 
 @app.get("/api/history")
-async def api_history(ticker: str = "", days: int = 30):
-    """Get analysis history for the last N days."""
+async def api_history(request: Request, ticker: str = "", days: int = 30, scope: str = ""):
+    """Get analysis history for the last N days.
+    Non-admins only see their own history. Admins see their own by default,
+    or all users' history when scope=global."""
     ensure_db()
-    records = get_history(days=days, ticker=ticker or None)
+    session = _get_session(request)
+    web_user = session["user"] if session else None
+    is_admin = _is_admin(request)
+
+    # Admins can request global history; everyone else sees only their own
+    if is_admin and scope == "global":
+        user_filter = None
+    else:
+        user_filter = web_user
+
+    records = get_history(days=days, ticker=ticker or None, web_user=user_filter)
     return JSONResponse([
         {
             "id": r.id,

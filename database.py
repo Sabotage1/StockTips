@@ -191,13 +191,18 @@ def _is_error_analysis(confidence: str, short_summary: str) -> bool:
     return confidence == "LOW" and any(m in lower for m in _ERROR_MARKERS)
 
 
-def _delete_old_analyses(db, ticker: str, hours: int = 24):
-    """Delete previous analyses for the same ticker from the past N hours."""
+def _delete_old_analyses(db, ticker: str, web_user: str = "", source: str = "web", telegram_user_id: str = "", hours: int = 24):
+    """Delete previous analyses for the same ticker+user from the past N hours."""
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
-    db.query(TickerAnalysis).filter(
+    query = db.query(TickerAnalysis).filter(
         TickerAnalysis.ticker == ticker.upper(),
         TickerAnalysis.created_at >= cutoff,
-    ).delete(synchronize_session=False)
+    )
+    if source == "telegram" and telegram_user_id:
+        query = query.filter(TickerAnalysis.telegram_user_id == telegram_user_id)
+    elif web_user:
+        query = query.filter(TickerAnalysis.web_user == web_user)
+    query.delete(synchronize_session=False)
 
 
 def save_analysis(
@@ -220,7 +225,7 @@ def save_analysis(
     db = SessionLocal()
     try:
         if not _is_error_analysis(confidence, short_summary):
-            _delete_old_analyses(db, ticker)
+            _delete_old_analyses(db, ticker, web_user=web_user, source=source, telegram_user_id=telegram_user_id)
         record = TickerAnalysis(
             ticker=ticker.upper(),
             company_name=company_name,
@@ -247,8 +252,9 @@ def save_analysis(
         db.close()
 
 
-def get_history(days: int = 30, ticker: Optional[str] = None) -> List[TickerAnalysis]:
-    """Get analysis history for the last N days (default 30)."""
+def get_history(days: int = 30, ticker: Optional[str] = None, web_user: Optional[str] = None) -> List[TickerAnalysis]:
+    """Get analysis history for the last N days (default 30).
+    If web_user is provided, only return that user's analyses."""
     db = SessionLocal()
     try:
         cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=days)
@@ -259,6 +265,8 @@ def get_history(days: int = 30, ticker: Optional[str] = None) -> List[TickerAnal
         )
         if ticker:
             query = query.filter(TickerAnalysis.ticker == ticker.upper())
+        if web_user:
+            query = query.filter(TickerAnalysis.web_user == web_user)
         return query.all()
     finally:
         db.close()

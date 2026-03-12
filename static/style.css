@@ -423,6 +423,16 @@ body {
     margin-left: auto;
 }
 .btn-clear-all:hover { background: rgba(248,113,113,0.2); border-color: var(--red); }
+.btn-global-history {
+    padding: 10px 18px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    border-radius: var(--radius-sm);
+    color: var(--text2); font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-global-history:hover { background: var(--surface); border-color: var(--accent); color: var(--accent2); }
+.btn-global-history.active { background: rgba(124,108,240,0.12); border-color: var(--accent); color: var(--accent2); }
 
 /* === Modal === */
 .modal-overlay {
