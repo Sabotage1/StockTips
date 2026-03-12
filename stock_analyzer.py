@@ -716,12 +716,8 @@ Respond ONLY with valid JSON in this exact format:
         except json.JSONDecodeError:
             continue
         except Exception as e:
-            err_str = str(e).lower()
-            quota_keywords = ["resource exhausted", "quota", "rate limit", "429",
-                              "too many requests", "limit exceeded", "resourceexhausted"]
-            if any(kw in err_str for kw in quota_keywords):
-                break  # quota is shared across models, stop immediately
-            return None
+            print("Digest {} error: {}".format(model_key, str(e)[:200]))
+            continue  # try next model
     return None
 
 
@@ -1004,9 +1000,7 @@ Respond ONLY with valid JSON.""".format(
                 err_str = str(e)
                 print("Gemini {} error for {}: {}".format(model_key, ticker.upper(), err_str[:200]))
                 _last_error = err_str
-                if _detect_quota_error(err_str):
-                    break  # quota is shared across models, stop immediately
-                continue
+                continue  # try next model (rate limits are per-model)
         return _analysis, _last_response_text, _last_error
 
     analysis, last_response_text, last_error = await _loop.run_in_executor(None, _run_gemini_models)
