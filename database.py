@@ -164,26 +164,30 @@ def _migrate_add_columns():
                 db.commit()
         except Exception:
             db.rollback()
-        # Backfill user_code for existing users that don't have one
+        # Ensure founding users have their assigned codes
         try:
-            rows = db.execute(text("SELECT id, username FROM users WHERE user_code IS NULL OR user_code = ''")).fetchall()
+            _hardcoded = {"sabotage": "1337", "adam": "5555"}
+            for uname, code in _hardcoded.items():
+                db.execute(text("UPDATE users SET user_code = :code WHERE LOWER(username) = :uname"),
+                           {"code": code, "uname": uname})
+            db.commit()
+        except Exception:
+            db.rollback()
+        # Backfill user_code for any users that don't have one
+        try:
+            rows = db.execute(text("SELECT id FROM users WHERE user_code IS NULL OR user_code = ''")).fetchall()
             existing_codes = set()
             if rows:
                 existing = db.execute(text("SELECT user_code FROM users WHERE user_code IS NOT NULL AND user_code != ''")).fetchall()
                 existing_codes = {r[0] for r in existing}
-            # Hardcoded codes for founding users
-            _hardcoded = {"sabotage": "1337", "adam": "5555"}
+                existing_codes.update(_RESERVED_CODES)
             for row in rows:
-                uid, uname = row[0], row[1].lower()
-                if uname in _hardcoded:
-                    code = _hardcoded[uname]
-                else:
+                code = _generate_user_code()
+                while code in existing_codes:
                     code = _generate_user_code()
-                    while code in existing_codes:
-                        code = _generate_user_code()
                 existing_codes.add(code)
                 db.execute(text("UPDATE users SET user_code = :code WHERE id = :id"),
-                           {"code": code, "id": uid})
+                           {"code": code, "id": row[0]})
             if rows:
                 db.commit()
         except Exception:
