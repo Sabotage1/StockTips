@@ -366,7 +366,10 @@
         <!-- Chat Sub-Panel -->
         <div id="social-chat" class="social-sub">
             <div id="chatConversations">
-                <div class="card-title" style="margin-bottom:12px">Conversations</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+                    <div class="card-title" style="margin-bottom:0">Conversations</div>
+                    <button class="new-chat-btn" style="width:auto;padding:6px 14px" onclick="showNewChatPickerMain()">+ New Chat</button>
+                </div>
                 <div id="convoList"><p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p></div>
             </div>
             <div id="chatView" style="display:none">

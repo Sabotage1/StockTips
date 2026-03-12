@@ -2660,6 +2660,30 @@ function formatTime(isoStr) {
     return d.toLocaleDateString();
 }
 
+async function showNewChatPickerMain() {
+    try {
+        var resp = await fetch(API + '/api/friends');
+        var friends = await resp.json();
+        if (!friends.length) {
+            alert('Add friends first to start chatting!');
+            return;
+        }
+        var el = document.getElementById('convoList');
+        var html = '<div class="new-chat-picker">';
+        html += '<div style="padding:8px 0;font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:1px">Select a friend</div>';
+        friends.forEach(function(f) {
+            var fn = displayName(f);
+            var initial = fn.charAt(0).toUpperCase();
+            html += '<div class="convo-item" onclick="openChat(' + f.user_id + ',\'' + escapeHtml(fn).replace(/'/g, "\\'") + '\')">' +
+                '<div class="convo-avatar">' + initial + '</div>' +
+                '<div class="convo-info"><div class="convo-name">' + escapeHtml(fn) + '</div></div></div>';
+        });
+        html += '<div style="padding:8px 0"><button class="new-chat-cancel-btn" onclick="loadConversations()">Cancel</button></div>';
+        html += '</div>';
+        el.innerHTML = html;
+    } catch (e) { console.error('New chat picker error:', e); }
+}
+
 function openChat(friendId, friendName) {
     _chatFriendId = friendId;
     _chatFriendName = friendName;
