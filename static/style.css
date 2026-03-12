@@ -391,6 +391,7 @@ body {
 .history-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .history-table tbody tr { cursor: pointer; }
 .history-table tbody tr:hover { background: var(--surface2); }
+#portfolioTable tbody tr:hover { background: none; }
 .history-table tbody tr:last-child td { border-bottom: none; }
 .empty-row { text-align: center; padding: 48px 16px !important; color: var(--text3); }
 
@@ -1113,20 +1114,13 @@ body {
     background: linear-gradient(to right, rgba(0,0,0,0.15), transparent);
     pointer-events: none;
 }
-#portfolioTable tbody tr:hover td[data-col="ticker"] {
-    background: var(--surface2-hover-solid);
-}
 #portfolioTable th:not([data-col="ticker"]) {
-    position: relative;
-    z-index: 0;
     background: var(--surface2-solid);
 }
 #portfolioTable tbody tr td:not([data-col="ticker"]) {
-    position: relative;
-    z-index: 0;
     background: var(--surface-solid);
 }
-#portfolioTable tbody tr:hover td:not([data-col="ticker"]) {
+#portfolioTable tbody tr:hover td {
     background: var(--surface2-hover-solid);
 }
 
