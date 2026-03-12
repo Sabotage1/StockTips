@@ -720,7 +720,7 @@ Respond ONLY with valid JSON in this exact format:
             quota_keywords = ["resource exhausted", "quota", "rate limit", "429",
                               "too many requests", "limit exceeded", "resourceexhausted"]
             if any(kw in err_str for kw in quota_keywords):
-                continue
+                break  # quota is shared across models, stop immediately
             return None
     return None
 
@@ -1004,6 +1004,8 @@ Respond ONLY with valid JSON.""".format(
                 err_str = str(e)
                 print("Gemini {} error for {}: {}".format(model_key, ticker.upper(), err_str[:200]))
                 _last_error = err_str
+                if _detect_quota_error(err_str):
+                    break  # quota is shared across models, stop immediately
                 continue
         return _analysis, _last_response_text, _last_error
 
