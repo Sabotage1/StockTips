@@ -380,8 +380,14 @@ async def api_history(request: Request, ticker: str = "", days: int = 30, scope:
         user_filter = web_user
 
     records = get_history(days=days, ticker=ticker or None, web_user=user_filter)
-    return JSONResponse([
-        {
+    result = []
+    for r in records:
+        extra = {}
+        try:
+            extra = json.loads(r.analysis_json) if r.analysis_json else {}
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        result.append({
             "id": r.id,
             "ticker": r.ticker,
             "company_name": r.company_name,
@@ -393,10 +399,11 @@ async def api_history(request: Request, ticker: str = "", days: int = 30, scope:
             "telegram_user": r.telegram_user,
             "web_user": getattr(r, "web_user", "") or "",
             "share_token": getattr(r, "share_token", "") or "",
+            "price_target_short": extra.get("price_target_short", ""),
+            "stop_loss": extra.get("stop_loss", ""),
             "created_at": r.created_at.isoformat() if r.created_at else "",
-        }
-        for r in records
-    ])
+        })
+    return JSONResponse(result)
 
 
 @app.get("/api/analysis/{analysis_id}")
