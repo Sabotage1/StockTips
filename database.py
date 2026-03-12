@@ -8,7 +8,10 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from config import DATABASE_URL
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+engine_kwargs = {"connect_args": connect_args}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["pool_pre_ping"] = True
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -909,10 +912,14 @@ def get_friends(user_id: int) -> List[dict]:
             Friendship.status == "accepted",
             (Friendship.user_id == user_id) | (Friendship.friend_id == user_id)
         ).all()
+        other_ids = [f.friend_id if f.user_id == user_id else f.user_id for f in rows]
+        if not other_ids:
+            return []
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(other_ids)).all()}
         result = []
         for f in rows:
             other_id = f.friend_id if f.user_id == user_id else f.user_id
-            other = db.query(User).filter(User.id == other_id).first()
+            other = users.get(other_id)
             if other:
                 result.append({
                     "friendship_id": f.id,
@@ -933,9 +940,13 @@ def get_incoming_friend_requests(user_id: int) -> List[dict]:
             Friendship.friend_id == user_id,
             Friendship.status == "pending"
         ).order_by(Friendship.created_at.desc()).all()
+        sender_ids = [f.user_id for f in rows]
+        if not sender_ids:
+            return []
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(sender_ids)).all()}
         result = []
         for f in rows:
-            sender = db.query(User).filter(User.id == f.user_id).first()
+            sender = users.get(f.user_id)
             if sender:
                 result.append({
                     "id": f.id,
@@ -956,9 +967,13 @@ def get_outgoing_friend_requests(user_id: int) -> List[dict]:
             Friendship.user_id == user_id,
             Friendship.status == "pending"
         ).order_by(Friendship.created_at.desc()).all()
+        recipient_ids = [f.friend_id for f in rows]
+        if not recipient_ids:
+            return []
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(recipient_ids)).all()}
         result = []
         for f in rows:
-            recipient = db.query(User).filter(User.id == f.friend_id).first()
+            recipient = users.get(f.friend_id)
             if recipient:
                 result.append({
                     "id": f.id,
@@ -1203,10 +1218,12 @@ def get_tips(user_id: int, direction: str = "received") -> List[dict]:
             rows = db.query(Tip).filter(Tip.sender_id == user_id).order_by(Tip.created_at.desc()).all()
         else:
             rows = db.query(Tip).filter(Tip.receiver_id == user_id).order_by(Tip.created_at.desc()).all()
+        other_ids = list(set(t.receiver_id if direction == "sent" else t.sender_id for t in rows))
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(other_ids)).all()} if other_ids else {}
         result = []
         for t in rows:
             other_id = t.receiver_id if direction == "sent" else t.sender_id
-            other = db.query(User).filter(User.id == other_id).first()
+            other = users.get(other_id)
             result.append({
                 "id": t.id,
                 "sender_id": t.sender_id,
