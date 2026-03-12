@@ -69,8 +69,7 @@ body {
 }
 .logo em { font-style: normal; color: var(--accent2); }
 
-.nav { display: flex; gap: 4px; align-items: center; flex: 1; margin-left: 16px; }
-.nav-btn-friends { margin-left: auto; }
+.nav { display: flex; gap: 4px; align-items: center; flex: 1; justify-content: center; }
 .nav-btn {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 16px; border-radius: 8px;
@@ -1239,8 +1238,6 @@ body {
     border-radius: var(--radius-sm);
     padding: 4px;
     width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
 }
 .social-tab {
     background: none;
