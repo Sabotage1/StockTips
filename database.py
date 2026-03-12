@@ -181,6 +181,16 @@ def get_db():
         db.close()
 
 
+_ERROR_MARKERS = ["parsing failed", "error analyzing", "quota exhausted",
+                   "an error occurred", "analysis failed"]
+
+
+def _is_error_analysis(confidence: str, short_summary: str) -> bool:
+    """Check if an analysis result is an error/failure."""
+    lower = short_summary.lower()
+    return confidence == "LOW" and any(m in lower for m in _ERROR_MARKERS)
+
+
 def _delete_old_analyses(db, ticker: str, hours: int = 24):
     """Delete previous analyses for the same ticker from the past N hours."""
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
@@ -209,7 +219,8 @@ def save_analysis(
 ) -> TickerAnalysis:
     db = SessionLocal()
     try:
-        _delete_old_analyses(db, ticker)
+        if not _is_error_analysis(confidence, short_summary):
+            _delete_old_analyses(db, ticker)
         record = TickerAnalysis(
             ticker=ticker.upper(),
             company_name=company_name,
