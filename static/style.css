@@ -69,7 +69,7 @@ body {
 }
 .logo em { font-style: normal; color: var(--accent2); }
 
-.nav { display: flex; gap: 4px; align-items: center; }
+.nav { display: flex; gap: 4px; align-items: center; flex: 1; margin-left: 16px; }
 .nav-btn-friends { margin-left: auto; }
 .nav-btn {
     display: flex; align-items: center; gap: 6px;
