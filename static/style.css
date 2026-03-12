@@ -70,6 +70,7 @@ body {
 .logo em { font-style: normal; color: var(--accent2); }
 
 .nav { display: flex; gap: 4px; align-items: center; flex: 1; justify-content: center; }
+.nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .nav-btn {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 16px; border-radius: 8px;
