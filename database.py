@@ -1114,7 +1114,7 @@ def get_conversations(user_id: int) -> List[dict]:
         partner_ids = set()
         msg_partners = db.execute(
             db.query(
-                case([(Message.sender_id == user_id, Message.receiver_id)], else_=Message.sender_id).label("pid")
+                case((Message.sender_id == user_id, Message.receiver_id), else_=Message.sender_id).label("pid")
             ).filter(
                 (Message.sender_id == user_id) | (Message.receiver_id == user_id)
             ).distinct().statement
@@ -1123,7 +1123,7 @@ def get_conversations(user_id: int) -> List[dict]:
             partner_ids.add(row[0])
         tip_partners = db.execute(
             db.query(
-                case([(Tip.sender_id == user_id, Tip.receiver_id)], else_=Tip.sender_id).label("pid")
+                case((Tip.sender_id == user_id, Tip.receiver_id), else_=Tip.sender_id).label("pid")
             ).filter(
                 (Tip.sender_id == user_id) | (Tip.receiver_id == user_id)
             ).distinct().statement
@@ -1321,7 +1321,7 @@ def get_social_init(user_id: int) -> dict:
         partner_ids = set()
         msg_partners = db.execute(
             db.query(
-                case([(Message.sender_id == user_id, Message.receiver_id)], else_=Message.sender_id).label("pid")
+                case((Message.sender_id == user_id, Message.receiver_id), else_=Message.sender_id).label("pid")
             ).filter(
                 (Message.sender_id == user_id) | (Message.receiver_id == user_id)
             ).distinct().statement
@@ -1330,7 +1330,7 @@ def get_social_init(user_id: int) -> dict:
             partner_ids.add(row[0])
         tip_partners = db.execute(
             db.query(
-                case([(Tip.sender_id == user_id, Tip.receiver_id)], else_=Tip.sender_id).label("pid")
+                case((Tip.sender_id == user_id, Tip.receiver_id), else_=Tip.sender_id).label("pid")
             ).filter(
                 (Tip.sender_id == user_id) | (Tip.receiver_id == user_id)
             ).distinct().statement
