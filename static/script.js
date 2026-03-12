@@ -2379,13 +2379,10 @@ async function pollNotifications() {
         if (!resp.ok) return;
         var counts = await resp.json();
         var badge = document.getElementById('socialBadge');
-        var floatBadge = document.getElementById('floatingBadge');
         if (counts.total > 0) {
             if (badge) { badge.textContent = counts.total; badge.style.display = ''; }
-            if (floatBadge) { floatBadge.textContent = counts.total; floatBadge.style.display = ''; }
         } else {
             if (badge) badge.style.display = 'none';
-            if (floatBadge) floatBadge.style.display = 'none';
         }
         // Show toasts for new notifications
         if (counts.total > _lastNotifCounts.total) {
@@ -2396,6 +2393,18 @@ async function pollNotifications() {
         }
         _lastNotifCounts = counts;
         updateFloatingChatBtn();
+    } catch (e) { /* ignore */ }
+    // Update floating chat badge with unread messages + tips
+    try {
+        var chatResp = await fetch(API + '/api/unread-chat-count');
+        if (!chatResp.ok) return;
+        var chatData = await chatResp.json();
+        var floatBadge = document.getElementById('floatingBadge');
+        if (chatData.count > 0) {
+            if (floatBadge) { floatBadge.textContent = chatData.count; floatBadge.style.display = ''; }
+        } else {
+            if (floatBadge) floatBadge.style.display = 'none';
+        }
     } catch (e) { /* ignore */ }
 }
 

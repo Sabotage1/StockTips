@@ -1555,6 +1555,21 @@ def get_notifications(user_id: int, limit: int = 50) -> List[dict]:
         db.close()
 
 
+def get_unread_chat_count(user_id: int) -> int:
+    """Count total unread messages + tips for a user."""
+    db = SessionLocal()
+    try:
+        unread_msgs = db.query(Message).filter(
+            Message.receiver_id == user_id, Message.is_read == 0
+        ).count()
+        unread_tips = db.query(Tip).filter(
+            Tip.receiver_id == user_id, Tip.is_read == 0
+        ).count()
+        return unread_msgs + unread_tips
+    finally:
+        db.close()
+
+
 def get_unread_notification_counts(user_id: int) -> dict:
     db = SessionLocal()
     try:

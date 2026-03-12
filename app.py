@@ -31,7 +31,7 @@ from database import (
     delete_friendship, are_friends,
     create_message, get_conversation_messages, get_conversations, mark_messages_read,
     create_tip, get_tips, get_tip_by_id, mark_tip_read, get_tips_in_conversation, get_social_init,
-    delete_message, delete_tip, toggle_reaction, get_reactions_for_items,
+    delete_message, delete_tip, toggle_reaction, get_reactions_for_items, get_unread_chat_count,
     create_notification, get_notifications, get_unread_notification_counts,
     mark_notification_read, mark_all_notifications_read,
 )
@@ -1630,6 +1630,16 @@ async def api_notifications_count(request: Request):
     if not user_id:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     return JSONResponse(get_unread_notification_counts(user_id))
+
+
+@app.get("/api/unread-chat-count")
+async def api_unread_chat_count(request: Request):
+    """Get unread messages + tips count for floating badge."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"count": 0})
+    return JSONResponse({"count": get_unread_chat_count(user_id)})
 
 
 @app.get("/api/notifications")
