@@ -254,12 +254,14 @@ async def index(request: Request):
     session = _get_session(request)
     user_role = ""
     user_code = ""
+    display_name = ""
     if session:
         user = get_user_by_username(session["user"])
         if user:
             user_role = user.role
             user_code = user.user_code or ""
-    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role, "user_code": user_code})
+            display_name = user.display_name or user.username or ""
+    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role, "user_code": user_code, "display_name": display_name})
 
 
 @app.post("/api/analyze")

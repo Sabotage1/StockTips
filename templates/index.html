@@ -78,7 +78,8 @@
 
         <!-- Hero search -->
         <div class="hero">
-            <div id="greetingLine" style="font-size:32px;font-weight:800;background:linear-gradient(135deg,#7b2ff7,#c084fc,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;display:none"></div>
+            <div id="greetingLine" data-name="{{ display_name }}" style="font-size:32px;font-weight:800;background:linear-gradient(135deg,#7b2ff7,#c084fc,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;{% if not display_name %}display:none{% endif %}">
+            {% if display_name %}<script>(function(){var el=document.getElementById('greetingLine'),n=el.getAttribute('data-name'),g=['Hello','Hey','Welcome back','Good to see you','Howdy','Yo'],h=new Date().getHours();if(h<12)g.push('Good morning');else if(h<18)g.push('Good afternoon');else g.push('Good evening');el.textContent=g[Math.floor(Math.random()*g.length)]+', '+n})()</script>{% endif %}</div>
             <h2 class="hero-title">AI-Powered Stock Analysis</h2>
             <p class="hero-sub">Technical patterns, fundamentals, news sentiment — analyzed in seconds</p>
             <div class="search-wrap">
