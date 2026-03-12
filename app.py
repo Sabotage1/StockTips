@@ -25,6 +25,14 @@ from database import (
     update_portfolio_item, delete_portfolio_item,
     buy_more_shares, sell_shares, get_portfolio_transactions, get_realized_pnl_total,
     get_user_settings, save_user_settings, reorder_portfolio,
+    get_user_by_id, get_user_by_code,
+    create_friendship, get_friends, get_incoming_friend_requests,
+    get_outgoing_friend_requests, accept_friend_request, decline_friend_request,
+    delete_friendship, are_friends,
+    create_message, get_conversation_messages, get_conversations, mark_messages_read,
+    create_tip, get_tips, get_tip_by_id, mark_tip_read, get_tips_in_conversation,
+    create_notification, get_notifications, get_unread_notification_counts,
+    mark_notification_read, mark_all_notifications_read,
 )
 from stock_analyzer import analyze_stock, get_quick_signals, get_quick_signals_batch
 from chart_generator import generate_chart
@@ -202,7 +210,7 @@ async def api_me(request: Request):
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     settings = get_user_settings(user.id)
-    return JSONResponse({"username": user.username, "role": user.role, "user_code": user.user_code or "", "settings": settings})
+    return JSONResponse({"user_id": user.id, "username": user.username, "role": user.role, "user_code": user.user_code or "", "settings": settings})
 
 
 @app.post("/webhook/telegram")
@@ -1258,6 +1266,317 @@ async def api_portfolio_analyze(request: Request, item_id: int):
     except Exception as e:
         logger.error("Portfolio analysis error for {}: {}".format(item.ticker, e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# --- Friends API ---
+
+@app.post("/api/friends/request")
+async def api_friend_request(request: Request):
+    """Send a friend request by user_code."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    code = str(body.get("user_code", "")).strip()
+    if not code:
+        return JSONResponse({"error": "User code is required"}, status_code=400)
+    target = get_user_by_code(code)
+    if not target:
+        return JSONResponse({"error": "No user found with that code"}, status_code=404)
+    if target.id == user_id:
+        return JSONResponse({"error": "Cannot add yourself"}, status_code=400)
+    try:
+        f = create_friendship(user_id, target.id)
+        session = _get_session(request)
+        sender_name = session["user"] if session else ""
+        create_notification(
+            target.id, "friend_request",
+            "Friend request from {}".format(sender_name),
+            reference_id=f.id,
+        )
+        return JSONResponse({"ok": True, "id": f.id, "username": target.username})
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+
+
+@app.get("/api/friends")
+async def api_friends_list(request: Request):
+    """List accepted friends."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_friends(user_id))
+
+
+@app.get("/api/friends/requests")
+async def api_friend_requests_incoming(request: Request):
+    """Incoming pending friend requests."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_incoming_friend_requests(user_id))
+
+
+@app.get("/api/friends/outgoing")
+async def api_friend_requests_outgoing(request: Request):
+    """Outgoing pending friend requests."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_outgoing_friend_requests(user_id))
+
+
+@app.post("/api/friends/{friendship_id}/accept")
+async def api_friend_accept(request: Request, friendship_id: int):
+    """Accept a friend request."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    f = accept_friend_request(friendship_id, user_id)
+    if not f:
+        return JSONResponse({"error": "Request not found"}, status_code=404)
+    session = _get_session(request)
+    accepter_name = session["user"] if session else ""
+    create_notification(
+        f.user_id, "friend_accepted",
+        "{} accepted your friend request".format(accepter_name),
+        reference_id=f.id,
+    )
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/friends/{friendship_id}/decline")
+async def api_friend_decline(request: Request, friendship_id: int):
+    """Decline a friend request."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not decline_friend_request(friendship_id, user_id):
+        return JSONResponse({"error": "Request not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/friends/{friendship_id}")
+async def api_friend_remove(request: Request, friendship_id: int):
+    """Remove a friend."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not delete_friendship(friendship_id, user_id):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+# --- Messages API ---
+
+@app.get("/api/conversations")
+async def api_conversations(request: Request):
+    """List conversations with last message and unread count."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_conversations(user_id))
+
+
+@app.get("/api/messages/{friend_id}")
+async def api_messages_get(request: Request, friend_id: int):
+    """Get messages with a friend, including tips in the timeline."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not are_friends(user_id, friend_id):
+        return JSONResponse({"error": "Not friends"}, status_code=403)
+    msgs = get_conversation_messages(user_id, friend_id)
+    tips = get_tips_in_conversation(user_id, friend_id)
+    # Merge messages and tips into timeline sorted by created_at
+    for m in msgs:
+        m["type"] = "message"
+    timeline = msgs + tips
+    timeline.sort(key=lambda x: x.get("created_at", ""))
+    return JSONResponse(timeline)
+
+
+@app.post("/api/messages/{friend_id}")
+async def api_messages_send(request: Request, friend_id: int):
+    """Send a message to a friend."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not are_friends(user_id, friend_id):
+        return JSONResponse({"error": "Not friends"}, status_code=403)
+    body = await request.json()
+    content = str(body.get("content", "")).strip()
+    if not content:
+        return JSONResponse({"error": "Message cannot be empty"}, status_code=400)
+    msg = create_message(user_id, friend_id, content)
+    session = _get_session(request)
+    sender_name = session["user"] if session else ""
+    create_notification(
+        friend_id, "message",
+        "New message from {}".format(sender_name),
+        body=content[:100],
+        reference_id=msg.id,
+    )
+    return JSONResponse({
+        "ok": True,
+        "message": {
+            "id": msg.id,
+            "sender_id": msg.sender_id,
+            "receiver_id": msg.receiver_id,
+            "content": msg.content,
+            "created_at": msg.created_at.isoformat() if msg.created_at else "",
+        },
+    })
+
+
+@app.post("/api/messages/read/{friend_id}")
+async def api_messages_mark_read(request: Request, friend_id: int):
+    """Mark all messages from a friend as read."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    count = mark_messages_read(user_id, friend_id)
+    return JSONResponse({"ok": True, "marked": count})
+
+
+# --- Tips API ---
+
+@app.post("/api/tips/{friend_id}")
+async def api_tip_send(request: Request, friend_id: int):
+    """Send a stock tip to a friend."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not are_friends(user_id, friend_id):
+        return JSONResponse({"error": "Not friends"}, status_code=403)
+    body = await request.json()
+    ticker = str(body.get("ticker", "")).strip().upper()
+    if not ticker:
+        return JSONResponse({"error": "Ticker is required"}, status_code=400)
+    breakout_price = None
+    if body.get("breakout_price"):
+        try:
+            breakout_price = float(body["breakout_price"])
+        except (ValueError, TypeError):
+            pass
+    stop_loss = None
+    if body.get("stop_loss"):
+        try:
+            stop_loss = float(body["stop_loss"])
+        except (ValueError, TypeError):
+            pass
+    message = str(body.get("message", ""))
+    share_token = body.get("analysis_share_token") or None
+    tip = create_tip(user_id, friend_id, ticker, breakout_price, stop_loss, message, share_token)
+    session = _get_session(request)
+    sender_name = session["user"] if session else ""
+    create_notification(
+        friend_id, "tip",
+        "{} sent you a tip: {}".format(sender_name, ticker),
+        body=message[:100],
+        reference_id=tip.id,
+    )
+    return JSONResponse({
+        "ok": True,
+        "tip": {
+            "id": tip.id,
+            "ticker": tip.ticker,
+            "created_at": tip.created_at.isoformat() if tip.created_at else "",
+        },
+    })
+
+
+@app.get("/api/tips")
+async def api_tips_list(request: Request):
+    """List received or sent tips."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    direction = request.query_params.get("direction", "received")
+    return JSONResponse(get_tips(user_id, direction))
+
+
+@app.get("/api/tips/{tip_id}")
+async def api_tip_detail(request: Request, tip_id: int):
+    """Get a single tip detail."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    tip = get_tip_by_id(tip_id)
+    if not tip:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    if tip["sender_id"] != user_id and tip["receiver_id"] != user_id:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(tip)
+
+
+@app.post("/api/tips/{tip_id}/read")
+async def api_tip_mark_read(request: Request, tip_id: int):
+    """Mark a tip as read."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    mark_tip_read(tip_id, user_id)
+    return JSONResponse({"ok": True})
+
+
+# --- Notifications API ---
+
+@app.get("/api/notifications/count")
+async def api_notifications_count(request: Request):
+    """Get unread notification counts by type (polled every 15s)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_unread_notification_counts(user_id))
+
+
+@app.get("/api/notifications")
+async def api_notifications_list(request: Request):
+    """Full notification list."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_notifications(user_id))
+
+
+@app.post("/api/notifications/{notification_id}/read")
+async def api_notification_mark_read(request: Request, notification_id: int):
+    """Mark one notification as read."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    mark_notification_read(notification_id, user_id)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/notifications/read-all")
+async def api_notifications_read_all(request: Request):
+    """Mark all notifications as read."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    count = mark_all_notifications_read(user_id)
+    return JSONResponse({"ok": True, "marked": count})
 
 
 if __name__ == "__main__":

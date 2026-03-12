@@ -39,6 +39,8 @@ document.querySelectorAll('.nav-btn[data-panel]').forEach(btn => {
         if (currentPanel === 'usage') loadUsage();
         if (currentPanel === 'users') loadUsers();
         if (currentPanel === 'portfolio') loadPortfolio();
+        if (currentPanel === 'social') loadSocialPanel();
+        updateFloatingChatBtn();
     });
 });
 
@@ -722,6 +724,7 @@ async function fetchCurrentUser() {
         if (!resp.ok) return;
         const data = await resp.json();
         currentUserRole = data.role || 'viewer';
+        if (data.user_id) _currentUserId = data.user_id;
         if (data.settings) userSettings = data.settings;
         // Admin nav buttons are now rendered server-side via Jinja2
         // Hide delete buttons for non-admins
@@ -1173,6 +1176,7 @@ function renderPortfolioTable(items) {
                 '<button class="btn-pf-sell" onclick="event.stopPropagation();openSellSharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ',' + (it.current_price || 0) + ')" title="Sell">-Sell</button> ' +
                 '<button class="btn-pf-edit" onclick="event.stopPropagation();openEditPortfolioItem(' + it.id + ',' + it.shares + ',' + it.purchase_price + ',' + (it.stop_loss || 0) + ',\'' + it.ticker + '\')" title="Edit">Edit</button> ' +
                 '<button class="btn-pf-analyze" onclick="event.stopPropagation();analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
+                '<button class="btn-pf-tip" onclick="event.stopPropagation();openTipFromPortfolio(\'' + it.ticker + '\')">Tip</button> ' +
                 '<button class="btn-delete-row" onclick="event.stopPropagation();removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
             '</tr>';
     }).join('');
@@ -2252,3 +2256,579 @@ async function loadTransactionHistory(itemId) {
 
 fetchCurrentUser();
 loadHistory();
+
+// =============================================
+// === SOCIAL: Friends, Chat, Tips, Notifications ===
+// =============================================
+
+var _socialCurrentTab = 'chat';
+var _chatFriendId = null;
+var _chatFriendName = '';
+var _chatPollTimer = null;
+var _notifPollTimer = null;
+var _lastNotifCounts = { total: 0 };
+var _currentUserId = null;
+var _tipsDirection = 'received';
+
+// --- Notification Polling ---
+
+function startNotificationPolling() {
+    if (_notifPollTimer) return;
+    pollNotifications();
+    _notifPollTimer = setInterval(pollNotifications, 15000);
+}
+
+function stopNotificationPolling() {
+    if (_notifPollTimer) { clearInterval(_notifPollTimer); _notifPollTimer = null; }
+}
+
+async function pollNotifications() {
+    try {
+        var resp = await fetch(API + '/api/notifications/count');
+        if (!resp.ok) return;
+        var counts = await resp.json();
+        var badge = document.getElementById('socialBadge');
+        var floatBadge = document.getElementById('floatingBadge');
+        if (counts.total > 0) {
+            if (badge) { badge.textContent = counts.total; badge.style.display = ''; }
+            if (floatBadge) { floatBadge.textContent = counts.total; floatBadge.style.display = ''; }
+        } else {
+            if (badge) badge.style.display = 'none';
+            if (floatBadge) floatBadge.style.display = 'none';
+        }
+        // Show toasts for new notifications
+        if (counts.total > _lastNotifCounts.total) {
+            var diff = counts.total - _lastNotifCounts.total;
+            if (diff > 0 && _lastNotifCounts.total > 0) {
+                fetchAndShowToasts(diff);
+            }
+        }
+        _lastNotifCounts = counts;
+        updateFloatingChatBtn();
+    } catch (e) { /* ignore */ }
+}
+
+async function fetchAndShowToasts(count) {
+    try {
+        var resp = await fetch(API + '/api/notifications?limit=' + count);
+        if (!resp.ok) return;
+        var notifs = await resp.json();
+        var newOnes = notifs.filter(function(n) { return !n.is_read; }).slice(0, 3);
+        newOnes.reverse();
+        newOnes.forEach(function(n) { showToast(n); });
+    } catch (e) { /* ignore */ }
+}
+
+function showToast(notif) {
+    var container = document.getElementById('toastContainer');
+    if (!container) return;
+    var toastClass = 'toast-friend';
+    if (notif.type === 'message') toastClass = 'toast-message';
+    if (notif.type === 'tip') toastClass = 'toast-tip';
+
+    var el = document.createElement('div');
+    el.className = 'toast ' + toastClass;
+    el.innerHTML = '<div class="toast-title">' + escapeHtml(notif.title) + '</div>' +
+        (notif.body ? '<div class="toast-body">' + escapeHtml(notif.body) + '</div>' : '');
+    el.onclick = function() {
+        el.classList.add('removing');
+        setTimeout(function() { el.remove(); }, 300);
+        if (notif.type === 'message') goToSocialChat();
+        else if (notif.type === 'tip') { goToSocial(); switchSocialTab('tips'); }
+        else { goToSocial(); switchSocialTab('friends'); }
+    };
+    container.appendChild(el);
+    setTimeout(function() {
+        if (el.parentNode) { el.classList.add('removing'); setTimeout(function() { el.remove(); }, 300); }
+    }, 6000);
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// --- Social Panel ---
+
+function loadSocialPanel() {
+    switchSocialTab(_socialCurrentTab);
+}
+
+function switchSocialTab(tab) {
+    _socialCurrentTab = tab;
+    document.querySelectorAll('.social-sub-nav .social-tab').forEach(function(t) { t.classList.remove('active'); });
+    var btn = document.querySelector('.social-sub-nav .social-tab[data-subtab="' + tab + '"]');
+    if (btn) btn.classList.add('active');
+
+    document.querySelectorAll('.social-sub').forEach(function(s) { s.style.display = 'none'; });
+    if (tab === 'friends') {
+        document.getElementById('social-friends').style.display = '';
+        loadFriends();
+    } else if (tab === 'chat') {
+        document.getElementById('social-chat').style.display = '';
+        if (!_chatFriendId) loadConversations();
+    } else if (tab === 'tips') {
+        document.getElementById('social-tips').style.display = '';
+        loadTips();
+    }
+    stopChatPolling();
+    if (tab === 'chat' && _chatFriendId) startChatPolling();
+}
+
+// --- Friends ---
+
+async function loadFriends() {
+    try {
+        var [friendsResp, inResp, outResp] = await Promise.all([
+            fetch(API + '/api/friends'),
+            fetch(API + '/api/friends/requests'),
+            fetch(API + '/api/friends/outgoing'),
+        ]);
+        var friends = await friendsResp.json();
+        var incoming = await inResp.json();
+        var outgoing = await outResp.json();
+
+        // Pending requests
+        var reqSection = document.getElementById('friendRequestsSection');
+        var reqList = document.getElementById('friendRequestsList');
+        if (incoming.length || outgoing.length) {
+            reqSection.style.display = '';
+            var html = '';
+            incoming.forEach(function(r) {
+                html += '<div class="friend-card">' +
+                    '<div><span class="friend-name">' + escapeHtml(r.username) + '</span> <span class="friend-code">#' + r.user_code + '</span></div>' +
+                    '<div class="friend-actions">' +
+                        '<button class="btn-friend-accept" onclick="acceptFriend(' + r.id + ')">Accept</button>' +
+                        '<button class="btn-friend-decline" onclick="declineFriend(' + r.id + ')">Decline</button>' +
+                    '</div></div>';
+            });
+            outgoing.forEach(function(r) {
+                html += '<div class="friend-card">' +
+                    '<div><span class="friend-name">' + escapeHtml(r.username) + '</span> <span class="friend-code">#' + r.user_code + '</span></div>' +
+                    '<div style="font-size:12px;color:var(--text3)">Pending...</div></div>';
+            });
+            reqList.innerHTML = html;
+        } else {
+            reqSection.style.display = 'none';
+        }
+
+        // Friends list
+        var friendsEl = document.getElementById('friendsList');
+        if (!friends.length) {
+            friendsEl.innerHTML = '<p style="color:var(--text3);font-size:13px">No friends yet. Share your code and add friends!</p>';
+            return;
+        }
+        friendsEl.innerHTML = friends.map(function(f) {
+            return '<div class="friend-card">' +
+                '<div><span class="friend-name">' + escapeHtml(f.username) + '</span> <span class="friend-code">#' + f.user_code + '</span></div>' +
+                '<div class="friend-actions">' +
+                    '<button class="btn-friend-msg" onclick="openChat(' + f.user_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\')">Chat</button>' +
+                    '<button class="btn-friend-tip" onclick="openTipModal(' + f.user_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\')">Tip</button>' +
+                    '<button class="btn-friend-remove" onclick="removeFriend(' + f.friendship_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\')" title="Remove">&times;</button>' +
+                '</div></div>';
+        }).join('');
+    } catch (e) { console.error('Friends load error:', e); }
+}
+
+async function sendFriendRequest() {
+    var code = document.getElementById('addFriendCode').value.trim();
+    var msg = document.getElementById('addFriendMsg');
+    if (!code) return;
+    try {
+        var resp = await fetch(API + '/api/friends/request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_code: code }),
+        });
+        var data = await resp.json();
+        msg.style.display = 'block';
+        if (!resp.ok) {
+            msg.style.color = 'var(--red)';
+            msg.textContent = data.error || 'Failed';
+        } else {
+            msg.style.color = 'var(--green)';
+            msg.textContent = 'Request sent to ' + data.username;
+            document.getElementById('addFriendCode').value = '';
+            loadFriends();
+        }
+        setTimeout(function() { msg.style.display = 'none'; }, 4000);
+    } catch (e) { msg.style.display = 'block'; msg.style.color = 'var(--red)'; msg.textContent = 'Error'; }
+}
+
+async function acceptFriend(id) {
+    try {
+        await fetch(API + '/api/friends/' + id + '/accept', { method: 'POST' });
+        loadFriends();
+    } catch (e) { console.error(e); }
+}
+
+async function declineFriend(id) {
+    try {
+        await fetch(API + '/api/friends/' + id + '/decline', { method: 'POST' });
+        loadFriends();
+    } catch (e) { console.error(e); }
+}
+
+async function removeFriend(id, name) {
+    if (!confirm('Remove ' + name + ' from friends?')) return;
+    try {
+        await fetch(API + '/api/friends/' + id, { method: 'DELETE' });
+        loadFriends();
+    } catch (e) { console.error(e); }
+}
+
+// --- Chat ---
+
+async function loadConversations() {
+    try {
+        var resp = await fetch(API + '/api/conversations');
+        var convos = await resp.json();
+        var el = document.getElementById('convoList');
+        if (!convos.length) {
+            el.innerHTML = '<p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p>';
+            return;
+        }
+        el.innerHTML = convos.map(function(c) {
+            var initial = c.username.charAt(0).toUpperCase();
+            var timeStr = c.last_time ? formatTime(c.last_time) : '';
+            return '<div class="convo-item" onclick="openChat(' + c.user_id + ',\'' + escapeHtml(c.username).replace(/'/g, "\\'") + '\')">' +
+                '<div class="convo-avatar">' + initial + '</div>' +
+                '<div class="convo-info"><div class="convo-name">' + escapeHtml(c.username) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
+                '<div class="convo-meta"><div class="convo-time">' + timeStr + '</div>' +
+                    (c.unread > 0 ? '<div class="convo-unread">' + c.unread + '</div>' : '') +
+                '</div></div>';
+        }).join('');
+    } catch (e) { console.error('Conversations error:', e); }
+}
+
+function formatTime(isoStr) {
+    if (!isoStr) return '';
+    var d = new Date(isoStr);
+    var now = new Date();
+    var diffMs = now - d;
+    var diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'now';
+    if (diffMins < 60) return diffMins + 'm';
+    var diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return diffHours + 'h';
+    var diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return diffDays + 'd';
+    return d.toLocaleDateString();
+}
+
+function openChat(friendId, friendName) {
+    _chatFriendId = friendId;
+    _chatFriendName = friendName;
+    document.getElementById('chatConversations').style.display = 'none';
+    document.getElementById('chatView').style.display = '';
+    document.getElementById('chatWithName').textContent = friendName;
+    loadChatMessages();
+    startChatPolling();
+    // Mark messages as read
+    fetch(API + '/api/messages/read/' + friendId, { method: 'POST' });
+}
+
+function closeChatView() {
+    _chatFriendId = null;
+    _chatFriendName = '';
+    stopChatPolling();
+    document.getElementById('chatView').style.display = 'none';
+    document.getElementById('chatConversations').style.display = '';
+    loadConversations();
+}
+
+async function loadChatMessages() {
+    try {
+        var resp = await fetch(API + '/api/messages/' + _chatFriendId);
+        var timeline = await resp.json();
+        var el = document.getElementById('chatMessages');
+        if (!timeline.length) {
+            el.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:40px">No messages yet. Say hello!</p>';
+            return;
+        }
+        el.innerHTML = timeline.map(function(item) {
+            if (item.type === 'tip') {
+                return renderTipBubble(item);
+            }
+            var isSent = _currentUserId ? item.sender_id === _currentUserId : item.sender_id !== _chatFriendId;
+            var timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            return '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+                escapeHtml(item.content) +
+                '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+        }).join('');
+        el.scrollTop = el.scrollHeight;
+    } catch (e) { console.error('Chat load error:', e); }
+}
+
+function renderTipBubble(tip) {
+    var isSent = _currentUserId ? tip.sender_id === _currentUserId : tip.sender_id !== _chatFriendId;
+    var timeStr = tip.created_at ? new Date(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    var details = '';
+    if (tip.breakout_price) details += 'Breakout: $' + tip.breakout_price.toFixed(2) + ' ';
+    if (tip.stop_loss) details += 'Stop: $' + tip.stop_loss.toFixed(2);
+    var linkHtml = tip.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + tip.analysis_share_token + '" target="_blank">View Analysis</a>' : '';
+    return '<div class="chat-bubble tip-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+        '<div class="tip-bubble-header">Stock Tip</div>' +
+        '<div class="tip-bubble-ticker">' + escapeHtml(tip.ticker) + '</div>' +
+        (details ? '<div class="tip-bubble-detail">' + details + '</div>' : '') +
+        (tip.message ? '<div style="margin-top:4px;font-size:13px">' + escapeHtml(tip.message) + '</div>' : '') +
+        linkHtml +
+        '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+}
+
+async function sendChatMessage() {
+    var input = document.getElementById('chatInput');
+    var content = input.value.trim();
+    if (!content || !_chatFriendId) return;
+    input.value = '';
+    try {
+        await fetch(API + '/api/messages/' + _chatFriendId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content }),
+        });
+        loadChatMessages();
+    } catch (e) { console.error('Send error:', e); }
+}
+
+// Enter to send
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'chatInput') {
+        e.preventDefault();
+        sendChatMessage();
+    }
+});
+
+function startChatPolling() {
+    stopChatPolling();
+    _chatPollTimer = setInterval(function() {
+        if (_chatFriendId) {
+            loadChatMessages();
+            fetch(API + '/api/messages/read/' + _chatFriendId, { method: 'POST' });
+        }
+    }, 5000);
+}
+
+function stopChatPolling() {
+    if (_chatPollTimer) { clearInterval(_chatPollTimer); _chatPollTimer = null; }
+}
+
+// --- Tips ---
+
+function switchTipsTab(direction) {
+    _tipsDirection = direction;
+    document.getElementById('tipsReceivedTab').classList.toggle('active', direction === 'received');
+    document.getElementById('tipsSentTab').classList.toggle('active', direction === 'sent');
+    loadTips();
+}
+
+async function loadTips() {
+    try {
+        var resp = await fetch(API + '/api/tips?direction=' + _tipsDirection);
+        var tips = await resp.json();
+        var el = document.getElementById('tipsList');
+        if (!tips.length) {
+            el.innerHTML = '<p style="color:var(--text3);font-size:13px">No ' + _tipsDirection + ' tips yet.</p>';
+            return;
+        }
+        el.innerHTML = tips.map(function(t) {
+            var label = _tipsDirection === 'received' ? 'From: ' + escapeHtml(t.other_username) : 'To: ' + escapeHtml(t.other_username);
+            var details = '';
+            if (t.breakout_price) details += 'Breakout: $' + t.breakout_price.toFixed(2) + '  ';
+            if (t.stop_loss) details += 'Stop: $' + t.stop_loss.toFixed(2);
+            var timeStr = t.created_at ? formatTime(t.created_at) : '';
+            var unreadDot = (!t.is_read && _tipsDirection === 'received') ? '<span class="tip-unread-dot"></span>' : '';
+            return '<div class="tip-card" onclick="viewTipDetail(' + t.id + ')">' +
+                '<div class="tip-card-header">' +
+                    '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span></span>' +
+                    '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
+                '</div>' +
+                (details ? '<div class="tip-card-details">' + details + '</div>' : '') +
+                (t.message ? '<div class="tip-card-msg">' + escapeHtml(t.message).substring(0, 120) + '</div>' : '') +
+                (t.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + t.analysis_share_token + '" target="_blank" onclick="event.stopPropagation()">View Analysis</a>' : '') +
+                '</div>';
+        }).join('');
+    } catch (e) { console.error('Tips error:', e); }
+}
+
+async function viewTipDetail(tipId) {
+    try {
+        var resp = await fetch(API + '/api/tips/' + tipId);
+        var tip = await resp.json();
+        // Mark as read
+        fetch(API + '/api/tips/' + tipId + '/read', { method: 'POST' });
+        var details = '';
+        if (tip.breakout_price) details += '<div class="target-row"><span class="target-label">Breakout Price</span><span class="target-val">$' + tip.breakout_price.toFixed(2) + '</span></div>';
+        if (tip.stop_loss) details += '<div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">$' + tip.stop_loss.toFixed(2) + '</span></div>';
+        modalContent.innerHTML =
+            '<div class="result-hero" style="margin-bottom:0">' +
+                '<div class="result-top"><span class="result-ticker">' + escapeHtml(tip.ticker) + '</span></div>' +
+                '<div class="badges"><span class="badge badge-info">Stock Tip</span></div>' +
+                '<p style="color:var(--text2);font-size:13px;margin-top:8px">From: ' + escapeHtml(tip.sender_username) + ' &rarr; ' + escapeHtml(tip.receiver_username) + '</p>' +
+                '<p style="color:var(--text3);font-size:12px">' + (tip.created_at ? new Date(tip.created_at).toLocaleString() : '') + '</p>' +
+            '</div>' +
+            (details ? '<div class="card" style="margin-top:16px"><div class="card-title">Trade Setup</div>' + details + '</div>' : '') +
+            (tip.message ? '<div class="card" style="margin-top:12px"><div class="card-title">Message</div><div class="full-analysis">' + escapeHtml(tip.message) + '</div></div>' : '') +
+            (tip.analysis_share_token ? '<div style="margin-top:12px"><a href="/share/' + tip.analysis_share_token + '" target="_blank" class="tip-bubble-link" style="font-size:13px">View Full Analysis</a></div>' : '');
+        modalOverlay.classList.add('active');
+    } catch (e) { console.error('Tip detail error:', e); }
+}
+
+// --- Tip Modal ---
+
+var _tipModalFriendId = null;
+
+function openTipModal(friendId, friendName) {
+    _tipModalFriendId = friendId;
+    document.getElementById('tipModalSub').textContent = 'Send a tip to ' + friendName;
+    document.getElementById('tipFriendId').value = friendId;
+    document.getElementById('tipTicker').value = '';
+    document.getElementById('tipBreakout').value = '';
+    document.getElementById('tipStopLoss').value = '';
+    document.getElementById('tipMessage').value = '';
+    document.getElementById('tipShareToken').value = '';
+    document.getElementById('tipError').style.display = 'none';
+    document.getElementById('tipModalOverlay').classList.add('active');
+    document.getElementById('tipTicker').focus();
+}
+
+function openTipModalFromChat() {
+    if (!_chatFriendId) return;
+    openTipModal(_chatFriendId, _chatFriendName);
+}
+
+function closeTipModal() {
+    document.getElementById('tipModalOverlay').classList.remove('active');
+}
+
+// Tip from portfolio row
+async function openTipFromPortfolio(ticker) {
+    // Load friends to pick one
+    try {
+        var resp = await fetch(API + '/api/friends');
+        var friends = await resp.json();
+        if (!friends.length) {
+            alert('Add friends first to send tips!');
+            return;
+        }
+        // Get the latest analysis share_token for this ticker
+        var shareToken = '';
+        try {
+            var hResp = await fetch(API + '/api/history?days=30&ticker=' + ticker);
+            var history = await hResp.json();
+            if (history.length && history[0].share_token) shareToken = history[0].share_token;
+        } catch (e) { /* ignore */ }
+
+        if (friends.length === 1) {
+            openTipModal(friends[0].user_id, friends[0].username);
+            document.getElementById('tipTicker').value = ticker;
+            document.getElementById('tipShareToken').value = shareToken;
+            return;
+        }
+        // Multiple friends: show picker in modal
+        var pickerHtml = '<div class="pf-modal-title">Send Tip: ' + ticker + '</div><div class="pf-modal-sub">Select a friend</div>';
+        friends.forEach(function(f) {
+            pickerHtml += '<div class="friend-card" style="cursor:pointer" onclick="selectFriendForTip(' + f.user_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\',\'' + ticker + '\',\'' + shareToken + '\')">' +
+                '<span class="friend-name">' + escapeHtml(f.username) + '</span></div>';
+        });
+        modalContent.innerHTML = pickerHtml;
+        modalOverlay.classList.add('active');
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+function selectFriendForTip(friendId, friendName, ticker, shareToken) {
+    modalOverlay.classList.remove('active');
+    openTipModal(friendId, friendName);
+    document.getElementById('tipTicker').value = ticker;
+    document.getElementById('tipShareToken').value = shareToken;
+}
+
+async function submitTip() {
+    var friendId = document.getElementById('tipFriendId').value;
+    var ticker = document.getElementById('tipTicker').value.trim().toUpperCase();
+    var breakout = document.getElementById('tipBreakout').value;
+    var stopLoss = document.getElementById('tipStopLoss').value;
+    var message = document.getElementById('tipMessage').value;
+    var shareToken = document.getElementById('tipShareToken').value;
+    var errEl = document.getElementById('tipError');
+    if (!ticker) {
+        errEl.textContent = 'Ticker is required';
+        errEl.style.display = 'block';
+        return;
+    }
+    try {
+        var body = { ticker: ticker, message: message };
+        if (breakout) body.breakout_price = parseFloat(breakout);
+        if (stopLoss) body.stop_loss = parseFloat(stopLoss);
+        if (shareToken) body.analysis_share_token = shareToken;
+        var resp = await fetch(API + '/api/tips/' + friendId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            errEl.textContent = data.error || 'Failed to send tip';
+            errEl.style.display = 'block';
+            return;
+        }
+        closeTipModal();
+        if (_chatFriendId && parseInt(friendId) === _chatFriendId) loadChatMessages();
+        if (_socialCurrentTab === 'tips') loadTips();
+    } catch (e) {
+        errEl.textContent = 'Error: ' + e.message;
+        errEl.style.display = 'block';
+    }
+}
+
+// Tip modal click outside
+document.getElementById('tipModalOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeTipModal();
+});
+
+// --- Floating Chat Button ---
+
+function updateFloatingChatBtn() {
+    var btn = document.getElementById('floatingChatBtn');
+    if (!btn) return;
+    btn.style.display = (currentPanel !== 'social') ? '' : 'none';
+}
+
+function goToSocialChat() {
+    goToSocial();
+    switchSocialTab('chat');
+}
+
+function goToSocial() {
+    document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    var socialBtn = document.querySelector('.nav-btn[data-panel="social"]');
+    if (socialBtn) socialBtn.classList.add('active');
+    document.getElementById('panel-social').classList.add('active');
+    currentPanel = 'social';
+    stopPortfolioRefresh();
+    updateFloatingChatBtn();
+}
+
+// --- Init Social ---
+// Fetch user id for chat bubble direction
+async function initSocial() {
+    try {
+        var resp = await fetch(API + '/api/me');
+        if (!resp.ok) return;
+        var data = await resp.json();
+        // We don't get user id from /api/me by default but we can infer from messages
+    } catch (e) { /* ignore */ }
+    startNotificationPolling();
+    updateFloatingChatBtn();
+}
+
+// Hook into page lifecycle
+window.addEventListener('beforeunload', function() {
+    stopNotificationPolling();
+    stopChatPolling();
+});
+
+// Start social features after page load
+initSocial();

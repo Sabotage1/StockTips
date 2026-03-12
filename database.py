@@ -121,6 +121,57 @@ class UserSettings(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 
+class Friendship(Base):
+    __tablename__ = "friendships"
+    __table_args__ = (UniqueConstraint("user_id", "friend_id", name="uq_friendship"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)      # requester
+    friend_id = Column(Integer, index=True, nullable=False)     # recipient
+    status = Column(String(20), default="pending")              # pending / accepted / declined
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, index=True, nullable=False)
+    receiver_id = Column(Integer, index=True, nullable=False)
+    content = Column(Text, nullable=False)
+    is_read = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Tip(Base):
+    __tablename__ = "tips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, index=True, nullable=False)
+    receiver_id = Column(Integer, index=True, nullable=False)
+    ticker = Column(String(20), nullable=False)
+    breakout_price = Column(Float, nullable=True)
+    stop_loss = Column(Float, nullable=True)
+    message = Column(Text, default="")
+    analysis_share_token = Column(String(32), nullable=True)
+    is_read = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False)
+    type = Column(String(30), nullable=False)                   # friend_request / friend_accepted / message / tip
+    title = Column(String(200), default="")
+    body = Column(Text, default="")
+    reference_id = Column(Integer, nullable=True)
+    is_read = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
     # Migrate: add new columns to existing tables (safe for SQLite)
@@ -783,5 +834,520 @@ def reorder_portfolio(user_id: int, item_ids: List[int]) -> bool:
             ).update({"sort_order": idx})
         db.commit()
         return True
+    finally:
+        db.close()
+
+
+# --- User Lookups for Social ---
+
+def get_user_by_id(user_id: int) -> Optional[User]:
+    db = SessionLocal()
+    try:
+        return db.query(User).filter(User.id == user_id).first()
+    finally:
+        db.close()
+
+
+def get_user_by_code(code: str) -> Optional[User]:
+    db = SessionLocal()
+    try:
+        return db.query(User).filter(User.user_code == code).first()
+    finally:
+        db.close()
+
+
+# --- Friendships ---
+
+def create_friendship(user_id: int, friend_id: int) -> Friendship:
+    """Send a friend request. Raises ValueError if already exists."""
+    db = SessionLocal()
+    try:
+        existing = db.query(Friendship).filter(
+            ((Friendship.user_id == user_id) & (Friendship.friend_id == friend_id)) |
+            ((Friendship.user_id == friend_id) & (Friendship.friend_id == user_id))
+        ).first()
+        if existing:
+            if existing.status == "declined":
+                existing.user_id = user_id
+                existing.friend_id = friend_id
+                existing.status = "pending"
+                existing.updated_at = datetime.datetime.utcnow()
+                db.commit()
+                db.refresh(existing)
+                return existing
+            raise ValueError("Friend request already exists")
+        f = Friendship(user_id=user_id, friend_id=friend_id, status="pending")
+        db.add(f)
+        db.commit()
+        db.refresh(f)
+        return f
+    finally:
+        db.close()
+
+
+def get_friends(user_id: int) -> List[dict]:
+    """Get accepted friends with user info."""
+    db = SessionLocal()
+    try:
+        rows = db.query(Friendship).filter(
+            Friendship.status == "accepted",
+            (Friendship.user_id == user_id) | (Friendship.friend_id == user_id)
+        ).all()
+        result = []
+        for f in rows:
+            other_id = f.friend_id if f.user_id == user_id else f.user_id
+            other = db.query(User).filter(User.id == other_id).first()
+            if other:
+                result.append({
+                    "friendship_id": f.id,
+                    "user_id": other.id,
+                    "username": other.username,
+                    "user_code": other.user_code or "",
+                    "since": f.updated_at.isoformat() if f.updated_at else "",
+                })
+        return result
+    finally:
+        db.close()
+
+
+def get_incoming_friend_requests(user_id: int) -> List[dict]:
+    db = SessionLocal()
+    try:
+        rows = db.query(Friendship).filter(
+            Friendship.friend_id == user_id,
+            Friendship.status == "pending"
+        ).order_by(Friendship.created_at.desc()).all()
+        result = []
+        for f in rows:
+            sender = db.query(User).filter(User.id == f.user_id).first()
+            if sender:
+                result.append({
+                    "id": f.id,
+                    "user_id": sender.id,
+                    "username": sender.username,
+                    "user_code": sender.user_code or "",
+                    "created_at": f.created_at.isoformat() if f.created_at else "",
+                })
+        return result
+    finally:
+        db.close()
+
+
+def get_outgoing_friend_requests(user_id: int) -> List[dict]:
+    db = SessionLocal()
+    try:
+        rows = db.query(Friendship).filter(
+            Friendship.user_id == user_id,
+            Friendship.status == "pending"
+        ).order_by(Friendship.created_at.desc()).all()
+        result = []
+        for f in rows:
+            recipient = db.query(User).filter(User.id == f.friend_id).first()
+            if recipient:
+                result.append({
+                    "id": f.id,
+                    "user_id": recipient.id,
+                    "username": recipient.username,
+                    "user_code": recipient.user_code or "",
+                    "created_at": f.created_at.isoformat() if f.created_at else "",
+                })
+        return result
+    finally:
+        db.close()
+
+
+def accept_friend_request(friendship_id: int, user_id: int) -> Optional[Friendship]:
+    """Accept a pending friend request. user_id must be the recipient."""
+    db = SessionLocal()
+    try:
+        f = db.query(Friendship).filter(
+            Friendship.id == friendship_id,
+            Friendship.friend_id == user_id,
+            Friendship.status == "pending"
+        ).first()
+        if not f:
+            return None
+        f.status = "accepted"
+        f.updated_at = datetime.datetime.utcnow()
+        db.commit()
+        db.refresh(f)
+        return f
+    finally:
+        db.close()
+
+
+def decline_friend_request(friendship_id: int, user_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        f = db.query(Friendship).filter(
+            Friendship.id == friendship_id,
+            Friendship.friend_id == user_id,
+            Friendship.status == "pending"
+        ).first()
+        if not f:
+            return False
+        f.status = "declined"
+        f.updated_at = datetime.datetime.utcnow()
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def delete_friendship(friendship_id: int, user_id: int) -> bool:
+    """Remove a friend (either party can do it)."""
+    db = SessionLocal()
+    try:
+        f = db.query(Friendship).filter(
+            Friendship.id == friendship_id,
+            (Friendship.user_id == user_id) | (Friendship.friend_id == user_id)
+        ).first()
+        if not f:
+            return False
+        db.delete(f)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def are_friends(user_id: int, other_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        return db.query(Friendship).filter(
+            Friendship.status == "accepted",
+            ((Friendship.user_id == user_id) & (Friendship.friend_id == other_id)) |
+            ((Friendship.user_id == other_id) & (Friendship.friend_id == user_id))
+        ).first() is not None
+    finally:
+        db.close()
+
+
+# --- Messages ---
+
+def create_message(sender_id: int, receiver_id: int, content: str) -> Message:
+    db = SessionLocal()
+    try:
+        msg = Message(sender_id=sender_id, receiver_id=receiver_id, content=content[:2000])
+        db.add(msg)
+        db.commit()
+        db.refresh(msg)
+        return msg
+    finally:
+        db.close()
+
+
+def get_conversation_messages(user_id: int, other_id: int, limit: int = 100, before_id: Optional[int] = None) -> List[dict]:
+    db = SessionLocal()
+    try:
+        query = db.query(Message).filter(
+            ((Message.sender_id == user_id) & (Message.receiver_id == other_id)) |
+            ((Message.sender_id == other_id) & (Message.receiver_id == user_id))
+        )
+        if before_id:
+            query = query.filter(Message.id < before_id)
+        rows = query.order_by(Message.created_at.desc()).limit(limit).all()
+        rows.reverse()
+        return [{
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "receiver_id": m.receiver_id,
+            "content": m.content,
+            "is_read": m.is_read,
+            "created_at": m.created_at.isoformat() if m.created_at else "",
+        } for m in rows]
+    finally:
+        db.close()
+
+
+def get_conversations(user_id: int) -> List[dict]:
+    """Get list of conversations with last message and unread count."""
+    from sqlalchemy import func, case, or_, and_
+    db = SessionLocal()
+    try:
+        # Get all unique conversation partners
+        sent = db.query(Message.receiver_id.label("other_id")).filter(Message.sender_id == user_id)
+        received = db.query(Message.sender_id.label("other_id")).filter(Message.receiver_id == user_id)
+        partner_ids = set()
+        for row in sent.all():
+            partner_ids.add(row.other_id)
+        for row in received.all():
+            partner_ids.add(row.other_id)
+
+        # Also include friends who sent tips (tips show in chat)
+        tip_senders = db.query(Tip.sender_id.label("other_id")).filter(Tip.receiver_id == user_id)
+        tip_receivers = db.query(Tip.receiver_id.label("other_id")).filter(Tip.sender_id == user_id)
+        for row in tip_senders.all():
+            partner_ids.add(row.other_id)
+        for row in tip_receivers.all():
+            partner_ids.add(row.other_id)
+
+        convos = []
+        for pid in partner_ids:
+            other = db.query(User).filter(User.id == pid).first()
+            if not other:
+                continue
+            # Last message
+            last_msg = db.query(Message).filter(
+                ((Message.sender_id == user_id) & (Message.receiver_id == pid)) |
+                ((Message.sender_id == pid) & (Message.receiver_id == user_id))
+            ).order_by(Message.created_at.desc()).first()
+            # Last tip between these users
+            last_tip = db.query(Tip).filter(
+                ((Tip.sender_id == user_id) & (Tip.receiver_id == pid)) |
+                ((Tip.sender_id == pid) & (Tip.receiver_id == user_id))
+            ).order_by(Tip.created_at.desc()).first()
+            # Determine which is most recent
+            last_time = None
+            last_preview = ""
+            if last_msg:
+                last_time = last_msg.created_at
+                last_preview = last_msg.content[:60]
+            if last_tip:
+                tip_time = last_tip.created_at
+                if not last_time or tip_time > last_time:
+                    last_time = tip_time
+                    last_preview = "[Tip] " + last_tip.ticker
+            # Unread messages count
+            unread = db.query(Message).filter(
+                Message.sender_id == pid,
+                Message.receiver_id == user_id,
+                Message.is_read == 0
+            ).count()
+            # Unread tips count
+            unread_tips = db.query(Tip).filter(
+                Tip.sender_id == pid,
+                Tip.receiver_id == user_id,
+                Tip.is_read == 0
+            ).count()
+            convos.append({
+                "user_id": other.id,
+                "username": other.username,
+                "user_code": other.user_code or "",
+                "last_message": last_preview,
+                "last_time": last_time.isoformat() if last_time else "",
+                "unread": unread + unread_tips,
+            })
+        convos.sort(key=lambda c: c["last_time"] or "", reverse=True)
+        return convos
+    finally:
+        db.close()
+
+
+def mark_messages_read(user_id: int, sender_id: int) -> int:
+    """Mark all messages from sender_id to user_id as read."""
+    db = SessionLocal()
+    try:
+        count = db.query(Message).filter(
+            Message.sender_id == sender_id,
+            Message.receiver_id == user_id,
+            Message.is_read == 0
+        ).update({"is_read": 1})
+        db.commit()
+        return count
+    finally:
+        db.close()
+
+
+# --- Tips ---
+
+def create_tip(sender_id: int, receiver_id: int, ticker: str,
+               breakout_price: Optional[float] = None,
+               stop_loss: Optional[float] = None,
+               message: str = "",
+               analysis_share_token: Optional[str] = None) -> Tip:
+    db = SessionLocal()
+    try:
+        tip = Tip(
+            sender_id=sender_id,
+            receiver_id=receiver_id,
+            ticker=ticker.upper(),
+            breakout_price=breakout_price,
+            stop_loss=stop_loss,
+            message=message[:2000],
+            analysis_share_token=analysis_share_token,
+        )
+        db.add(tip)
+        db.commit()
+        db.refresh(tip)
+        return tip
+    finally:
+        db.close()
+
+
+def get_tips(user_id: int, direction: str = "received") -> List[dict]:
+    db = SessionLocal()
+    try:
+        if direction == "sent":
+            rows = db.query(Tip).filter(Tip.sender_id == user_id).order_by(Tip.created_at.desc()).all()
+        else:
+            rows = db.query(Tip).filter(Tip.receiver_id == user_id).order_by(Tip.created_at.desc()).all()
+        result = []
+        for t in rows:
+            other_id = t.receiver_id if direction == "sent" else t.sender_id
+            other = db.query(User).filter(User.id == other_id).first()
+            result.append({
+                "id": t.id,
+                "sender_id": t.sender_id,
+                "receiver_id": t.receiver_id,
+                "other_username": other.username if other else "",
+                "ticker": t.ticker,
+                "breakout_price": t.breakout_price,
+                "stop_loss": t.stop_loss,
+                "message": t.message,
+                "analysis_share_token": t.analysis_share_token,
+                "is_read": t.is_read,
+                "created_at": t.created_at.isoformat() if t.created_at else "",
+            })
+        return result
+    finally:
+        db.close()
+
+
+def get_tip_by_id(tip_id: int) -> Optional[dict]:
+    db = SessionLocal()
+    try:
+        t = db.query(Tip).filter(Tip.id == tip_id).first()
+        if not t:
+            return None
+        sender = db.query(User).filter(User.id == t.sender_id).first()
+        receiver = db.query(User).filter(User.id == t.receiver_id).first()
+        return {
+            "id": t.id,
+            "sender_id": t.sender_id,
+            "receiver_id": t.receiver_id,
+            "sender_username": sender.username if sender else "",
+            "receiver_username": receiver.username if receiver else "",
+            "ticker": t.ticker,
+            "breakout_price": t.breakout_price,
+            "stop_loss": t.stop_loss,
+            "message": t.message,
+            "analysis_share_token": t.analysis_share_token,
+            "is_read": t.is_read,
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+        }
+    finally:
+        db.close()
+
+
+def mark_tip_read(tip_id: int, user_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        t = db.query(Tip).filter(Tip.id == tip_id, Tip.receiver_id == user_id).first()
+        if not t:
+            return False
+        t.is_read = 1
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+# --- Notifications ---
+
+def create_notification(user_id: int, ntype: str, title: str, body: str = "", reference_id: Optional[int] = None) -> Notification:
+    db = SessionLocal()
+    try:
+        n = Notification(
+            user_id=user_id,
+            type=ntype,
+            title=title,
+            body=body,
+            reference_id=reference_id,
+        )
+        db.add(n)
+        db.commit()
+        db.refresh(n)
+        return n
+    finally:
+        db.close()
+
+
+def get_notifications(user_id: int, limit: int = 50) -> List[dict]:
+    db = SessionLocal()
+    try:
+        rows = db.query(Notification).filter(
+            Notification.user_id == user_id
+        ).order_by(Notification.created_at.desc()).limit(limit).all()
+        return [{
+            "id": n.id,
+            "type": n.type,
+            "title": n.title,
+            "body": n.body,
+            "reference_id": n.reference_id,
+            "is_read": n.is_read,
+            "created_at": n.created_at.isoformat() if n.created_at else "",
+        } for n in rows]
+    finally:
+        db.close()
+
+
+def get_unread_notification_counts(user_id: int) -> dict:
+    db = SessionLocal()
+    try:
+        rows = db.query(Notification).filter(
+            Notification.user_id == user_id,
+            Notification.is_read == 0
+        ).all()
+        counts = {"total": 0, "friend_request": 0, "friend_accepted": 0, "message": 0, "tip": 0}
+        for n in rows:
+            counts["total"] += 1
+            if n.type in counts:
+                counts[n.type] += 1
+        return counts
+    finally:
+        db.close()
+
+
+def mark_notification_read(notification_id: int, user_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        n = db.query(Notification).filter(
+            Notification.id == notification_id,
+            Notification.user_id == user_id
+        ).first()
+        if not n:
+            return False
+        n.is_read = 1
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def mark_all_notifications_read(user_id: int) -> int:
+    db = SessionLocal()
+    try:
+        count = db.query(Notification).filter(
+            Notification.user_id == user_id,
+            Notification.is_read == 0
+        ).update({"is_read": 1})
+        db.commit()
+        return count
+    finally:
+        db.close()
+
+
+def get_tips_in_conversation(user_id: int, other_id: int) -> List[dict]:
+    """Get tips exchanged between two users, for displaying in chat timeline."""
+    db = SessionLocal()
+    try:
+        rows = db.query(Tip).filter(
+            ((Tip.sender_id == user_id) & (Tip.receiver_id == other_id)) |
+            ((Tip.sender_id == other_id) & (Tip.receiver_id == user_id))
+        ).order_by(Tip.created_at.asc()).all()
+        return [{
+            "id": t.id,
+            "sender_id": t.sender_id,
+            "receiver_id": t.receiver_id,
+            "ticker": t.ticker,
+            "breakout_price": t.breakout_price,
+            "stop_loss": t.stop_loss,
+            "message": t.message,
+            "analysis_share_token": t.analysis_share_token,
+            "is_read": t.is_read,
+            "created_at": t.created_at.isoformat() if t.created_at else "",
+            "type": "tip",
+        } for t in rows]
     finally:
         db.close()

@@ -41,6 +41,11 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 History
             </button>
+            <button class="nav-btn" data-panel="social" id="navSocial">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                Social
+                <span class="nav-badge" id="socialBadge" style="display:none">0</span>
+            </button>
             {% if user_role == 'admin' %}
             <button class="nav-btn" data-panel="usage" id="navUsage">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="2" width="4" height="19" rx="1"/></svg>
@@ -56,7 +61,7 @@
                 Logout
             </a>
             {% if user_role == 'admin' %}
-            <span class="version-tag">v1.5.3</span>
+            <span class="version-tag">v1.6</span>
             {% elif user_code %}
             <span class="version-tag">ID: {{ user_code }}</span>
             {% endif %}
@@ -328,7 +333,101 @@
         </div>
     </div>
 
+    <!-- SOCIAL PANEL -->
+    <div id="panel-social" class="panel">
+        <div class="social-sub-nav">
+            <button class="social-tab active" data-subtab="chat" onclick="switchSocialTab('chat')">Chat</button>
+            <button class="social-tab" data-subtab="friends" onclick="switchSocialTab('friends')">Friends</button>
+            <button class="social-tab" data-subtab="tips" onclick="switchSocialTab('tips')">Tips</button>
+        </div>
+
+        <!-- Friends Sub-Panel -->
+        <div id="social-friends" class="social-sub" style="display:none">
+            <div class="friends-add-section">
+                <div class="card-title" style="margin-bottom:12px">Add Friend by Code</div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <input type="text" id="addFriendCode" placeholder="Enter 4-digit code" class="filter-input" maxlength="4" style="width:160px">
+                    <button class="btn-go" onclick="sendFriendRequest()" style="position:static;transform:none;border-radius:var(--radius-sm)"><span class="btn-text">Add</span></button>
+                </div>
+                <div id="addFriendMsg" style="margin-top:8px;font-size:13px;display:none"></div>
+            </div>
+            <div id="friendRequestsSection" style="display:none">
+                <div class="card-title" style="margin:20px 0 12px">Pending Requests</div>
+                <div id="friendRequestsList"></div>
+            </div>
+            <div class="card-title" style="margin:20px 0 12px">My Friends</div>
+            <div id="friendsList"><p style="color:var(--text3);font-size:13px">No friends yet. Share your code and add friends!</p></div>
+        </div>
+
+        <!-- Chat Sub-Panel -->
+        <div id="social-chat" class="social-sub">
+            <div id="chatConversations">
+                <div class="card-title" style="margin-bottom:12px">Conversations</div>
+                <div id="convoList"><p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p></div>
+            </div>
+            <div id="chatView" style="display:none">
+                <div class="chat-header">
+                    <button class="chat-back-btn" onclick="closeChatView()">&larr;</button>
+                    <span class="chat-with-name" id="chatWithName"></span>
+                    <button class="btn-send-tip-chat" onclick="openTipModalFromChat()" title="Send Tip">Send Tip</button>
+                </div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-bar">
+                    <input type="text" id="chatInput" placeholder="Type a message..." maxlength="2000" autocomplete="off" spellcheck="false">
+                    <button class="chat-send-btn" onclick="sendChatMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tips Sub-Panel -->
+        <div id="social-tips" class="social-sub" style="display:none">
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+                <button class="social-tab active" id="tipsReceivedTab" onclick="switchTipsTab('received')">Received</button>
+                <button class="social-tab" id="tipsSentTab" onclick="switchTipsTab('sent')">Sent</button>
+            </div>
+            <div id="tipsList"><p style="color:var(--text3);font-size:13px">No tips yet.</p></div>
+        </div>
+    </div>
+
 </main>
+
+<!-- Send Tip Modal -->
+<div class="modal-overlay" id="tipModalOverlay">
+    <div class="modal" style="max-width:460px">
+        <button class="modal-close" onclick="closeTipModal()">&times;</button>
+        <div class="pf-modal-title">Send Stock Tip</div>
+        <div class="pf-modal-sub" id="tipModalSub">Send a tip to your friend</div>
+        <div class="pf-modal-field">
+            <label class="pf-modal-label">Ticker</label>
+            <input type="text" id="tipTicker" class="pf-modal-input" maxlength="10" placeholder="AAPL" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="pf-modal-field">
+            <label class="pf-modal-label">Breakout Price ($)</label>
+            <input type="number" id="tipBreakout" class="pf-modal-input" placeholder="Optional" step="any" min="0">
+        </div>
+        <div class="pf-modal-field">
+            <label class="pf-modal-label">Stop Loss ($)</label>
+            <input type="number" id="tipStopLoss" class="pf-modal-input" placeholder="Optional" step="any" min="0">
+        </div>
+        <div class="pf-modal-field">
+            <label class="pf-modal-label">Message</label>
+            <textarea id="tipMessage" class="pf-modal-input" rows="3" maxlength="2000" placeholder="Why you like this trade..."></textarea>
+        </div>
+        <input type="hidden" id="tipFriendId">
+        <input type="hidden" id="tipShareToken">
+        <div class="pf-modal-error" id="tipError"></div>
+        <button class="pf-modal-btn" onclick="submitTip()">Send Tip</button>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Floating Chat Button -->
+<button class="floating-chat-btn" id="floatingChatBtn" onclick="goToSocialChat()" style="display:none">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <span class="floating-badge" id="floatingBadge" style="display:none">0</span>
+</button>
 
 <!-- Detail Modal -->
 <div class="modal-overlay" id="modalOverlay">
