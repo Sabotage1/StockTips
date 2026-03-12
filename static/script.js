@@ -2619,14 +2619,9 @@ async function removeFriend(id, name) {
 
 async function loadConversations() {
     try {
-        var convos;
-        if (_socialData && Array.isArray(_socialData.conversations)) {
-            convos = _socialData.conversations;
-        } else {
-            var resp = await fetch(API + '/api/conversations');
-            var data = await resp.json();
-            convos = Array.isArray(data) ? data : [];
-        }
+        var resp = await fetch(API + '/api/conversations');
+        var data = await resp.json();
+        var convos = Array.isArray(data) ? data : [];
         var el = document.getElementById('convoList');
         if (!convos.length) {
             el.innerHTML = '<p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p>';
@@ -2686,29 +2681,7 @@ async function showNewChatPickerMain() {
 }
 
 function cancelNewChatPickerMain() {
-    document.getElementById('convoList').innerHTML = '<p style="color:var(--text3);font-size:13px;padding:8px 0">Loading...</p>';
-    fetch(API + '/api/conversations').then(function(resp) {
-        return resp.json();
-    }).then(function(convos) {
-        var el = document.getElementById('convoList');
-        if (!Array.isArray(convos) || !convos.length) {
-            el.innerHTML = '<p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p>';
-            return;
-        }
-        el.innerHTML = convos.map(function(c) {
-            var dn = displayName(c);
-            var initial = dn.charAt(0).toUpperCase();
-            var timeStr = c.last_time ? formatTime(c.last_time) : '';
-            return '<div class="convo-item" onclick="openChat(' + c.user_id + ',\'' + escapeHtml(dn).replace(/'/g, "\\'") + '\')">' +
-                '<div class="convo-avatar">' + initial + '</div>' +
-                '<div class="convo-info"><div class="convo-name">' + escapeHtml(dn) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
-                '<div class="convo-meta"><div class="convo-time">' + timeStr + '</div>' +
-                    (c.unread > 0 ? '<div class="convo-unread">' + c.unread + '</div>' : '') +
-                '</div></div>';
-        }).join('');
-    }).catch(function() {
-        document.getElementById('convoList').innerHTML = '<p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p>';
-    });
+    loadConversations();
 }
 
 function openChat(friendId, friendName) {
