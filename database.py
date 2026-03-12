@@ -69,6 +69,7 @@ class User(Base):
     password_hash = Column(String(200), nullable=False)
     role = Column(String(20), default="viewer")  # "admin" or "viewer"
     user_code = Column(String(4), unique=True, index=True)
+    display_name = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -211,6 +212,7 @@ def _migrate_add_columns():
             ("portfolio_items", "sort_order", "INTEGER DEFAULT 0"),
             ("users", "user_code", "VARCHAR(5)"),
             ("tips", "expires_at", "TIMESTAMP"),
+            ("users", "display_name", "VARCHAR(100)"),
         ]
         for table, col, col_type in migrations:
             try:
@@ -240,6 +242,15 @@ def _migrate_add_columns():
             for uname, code in _hardcoded.items():
                 db.execute(text("UPDATE users SET user_code = :code WHERE LOWER(username) = :uname"),
                            {"code": code, "uname": uname})
+            db.commit()
+        except Exception:
+            db.rollback()
+        # Backfill display_name for founding users
+        try:
+            _display_names = {"sabotage": "Roy", "adam": "Adam"}
+            for uname, dname in _display_names.items():
+                db.execute(text("UPDATE users SET display_name = :dname WHERE LOWER(username) = :uname AND (display_name IS NULL OR display_name = '')"),
+                           {"dname": dname, "uname": uname})
             db.commit()
         except Exception:
             db.rollback()
@@ -534,7 +545,7 @@ def get_all_users() -> List[User]:
         db.close()
 
 
-def create_user(username: str, password_hash: str, role: str = "viewer") -> User:
+def create_user(username: str, password_hash: str, role: str = "viewer", display_name: Optional[str] = None) -> User:
     """Create a new user. Raises ValueError if username already exists."""
     db = SessionLocal()
     try:
@@ -547,7 +558,7 @@ def create_user(username: str, password_hash: str, role: str = "viewer") -> User
         code = _generate_user_code()
         while code in existing_codes:
             code = _generate_user_code()
-        user = User(username=username, password_hash=password_hash, role=role, user_code=code)
+        user = User(username=username, password_hash=password_hash, role=role, user_code=code, display_name=display_name)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -925,6 +936,7 @@ def get_friends(user_id: int) -> List[dict]:
                     "friendship_id": f.id,
                     "user_id": other.id,
                     "username": other.username,
+                    "display_name": other.display_name or "",
                     "user_code": other.user_code or "",
                     "since": f.updated_at.isoformat() if f.updated_at else "",
                 })
@@ -952,6 +964,7 @@ def get_incoming_friend_requests(user_id: int) -> List[dict]:
                     "id": f.id,
                     "user_id": sender.id,
                     "username": sender.username,
+                    "display_name": sender.display_name or "",
                     "user_code": sender.user_code or "",
                     "created_at": f.created_at.isoformat() if f.created_at else "",
                 })
@@ -979,6 +992,7 @@ def get_outgoing_friend_requests(user_id: int) -> List[dict]:
                     "id": f.id,
                     "user_id": recipient.id,
                     "username": recipient.username,
+                    "display_name": recipient.display_name or "",
                     "user_code": recipient.user_code or "",
                     "created_at": f.created_at.isoformat() if f.created_at else "",
                 })
@@ -1154,6 +1168,7 @@ def get_conversations(user_id: int) -> List[dict]:
             convos.append({
                 "user_id": other.id,
                 "username": other.username,
+                "display_name": other.display_name or "",
                 "user_code": other.user_code or "",
                 "last_message": last_preview,
                 "last_time": last_time.isoformat() if last_time else "",
@@ -1229,6 +1244,7 @@ def get_tips(user_id: int, direction: str = "received") -> List[dict]:
                 "sender_id": t.sender_id,
                 "receiver_id": t.receiver_id,
                 "other_username": other.username if other else "",
+                "other_display_name": other.display_name if other else "",
                 "ticker": t.ticker,
                 "breakout_price": t.breakout_price,
                 "stop_loss": t.stop_loss,
@@ -1256,7 +1272,9 @@ def get_tip_by_id(tip_id: int) -> Optional[dict]:
             "sender_id": t.sender_id,
             "receiver_id": t.receiver_id,
             "sender_username": sender.username if sender else "",
+            "sender_display_name": sender.display_name if sender else "",
             "receiver_username": receiver.username if receiver else "",
+            "receiver_display_name": receiver.display_name if receiver else "",
             "ticker": t.ticker,
             "breakout_price": t.breakout_price,
             "stop_loss": t.stop_loss,

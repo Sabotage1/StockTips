@@ -211,7 +211,7 @@ async def api_me(request: Request):
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     settings = get_user_settings(user.id)
-    return JSONResponse({"user_id": user.id, "username": user.username, "role": user.role, "user_code": user.user_code or "", "settings": settings})
+    return JSONResponse({"user_id": user.id, "username": user.username, "display_name": user.display_name or "", "role": user.role, "user_code": user.user_code or "", "settings": settings})
 
 
 @app.post("/webhook/telegram")
@@ -704,6 +704,7 @@ async def api_list_users(request: Request):
         {
             "id": u.id,
             "username": u.username,
+            "display_name": u.display_name or "",
             "role": u.role,
             "user_code": u.user_code or "",
             "created_at": u.created_at.isoformat() if u.created_at else "",
@@ -722,6 +723,7 @@ async def api_create_user(request: Request):
     username = body.get("username", "").strip()
     password = body.get("password", "")
     role = body.get("role", "viewer")
+    display_name = body.get("name", "").strip() or None
     if not username or not password:
         return JSONResponse({"error": "Username and password are required"}, status_code=400)
     if len(username) > 100:
@@ -732,12 +734,13 @@ async def api_create_user(request: Request):
         role = "viewer"
     try:
         hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        user = create_user(username, hashed, role)
+        user = create_user(username, hashed, role, display_name=display_name)
         return JSONResponse({
             "ok": True,
             "user": {
                 "id": user.id,
                 "username": user.username,
+                "display_name": user.display_name or "",
                 "role": user.role,
                 "user_code": user.user_code or "",
                 "created_at": user.created_at.isoformat() if user.created_at else "",
@@ -1296,14 +1299,14 @@ async def api_friend_request(request: Request):
         return JSONResponse({"error": "Cannot add yourself"}, status_code=400)
     try:
         f = create_friendship(user_id, target.id)
-        session = _get_session(request)
-        sender_name = session["user"] if session else ""
+        sender = get_user_by_id(user_id)
+        sender_label = (sender.display_name or sender.username) if sender else ""
         create_notification(
             target.id, "friend_request",
-            "Friend request from {}".format(sender_name),
+            "Friend request from {}".format(sender_label),
             reference_id=f.id,
         )
-        return JSONResponse({"ok": True, "id": f.id, "username": target.username})
+        return JSONResponse({"ok": True, "id": f.id, "username": target.username, "display_name": target.display_name or ""})
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=409)
 
@@ -1348,11 +1351,11 @@ async def api_friend_accept(request: Request, friendship_id: int):
     f = accept_friend_request(friendship_id, user_id)
     if not f:
         return JSONResponse({"error": "Request not found"}, status_code=404)
-    session = _get_session(request)
-    accepter_name = session["user"] if session else ""
+    accepter = get_user_by_id(user_id)
+    accepter_label = (accepter.display_name or accepter.username) if accepter else ""
     create_notification(
         f.user_id, "friend_accepted",
-        "{} accepted your friend request".format(accepter_name),
+        "{} accepted your friend request".format(accepter_label),
         reference_id=f.id,
     )
     return JSONResponse({"ok": True})
@@ -1435,11 +1438,11 @@ async def api_messages_send(request: Request, friend_id: int):
     if not content:
         return JSONResponse({"error": "Message cannot be empty"}, status_code=400)
     msg = create_message(user_id, friend_id, content)
-    session = _get_session(request)
-    sender_name = session["user"] if session else ""
+    sender = get_user_by_id(user_id)
+    sender_label = (sender.display_name or sender.username) if sender else ""
     create_notification(
         friend_id, "message",
-        "New message from {}".format(sender_name),
+        "New message from {}".format(sender_label),
         body=content[:100],
         reference_id=msg.id,
     )
@@ -1503,11 +1506,11 @@ async def api_tip_send(request: Request, friend_id: int):
             except (ValueError, TypeError):
                 pass
         tip = create_tip(user_id, friend_id, ticker, breakout_price, stop_loss, message, share_token, expiry_hours)
-        session = _get_session(request)
-        sender_name = session["user"] if session else ""
+        sender = get_user_by_id(user_id)
+        sender_label = (sender.display_name or sender.username) if sender else ""
         create_notification(
             friend_id, "tip",
-            "{} sent you a tip: {}".format(sender_name, ticker),
+            "{} sent you a tip: {}".format(sender_label, ticker),
             body=message[:100],
             reference_id=tip.id,
         )

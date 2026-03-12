@@ -2456,6 +2456,10 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function displayName(obj) {
+    return obj.display_name || obj.username;
+}
+
 // --- Social Panel ---
 
 function loadSocialPanel() {
@@ -2514,7 +2518,7 @@ async function loadFriends() {
             var html = '';
             incoming.forEach(function(r) {
                 html += '<div class="friend-card">' +
-                    '<div><span class="friend-name">' + escapeHtml(r.username) + '</span> <span class="friend-code">#' + r.user_code + '</span></div>' +
+                    '<div><span class="friend-name">' + escapeHtml(displayName(r)) + '</span> <span class="friend-code">#' + r.user_code + '</span></div>' +
                     '<div class="friend-actions">' +
                         '<button class="btn-friend-accept" onclick="acceptFriend(' + r.id + ')">Accept</button>' +
                         '<button class="btn-friend-decline" onclick="declineFriend(' + r.id + ')">Decline</button>' +
@@ -2522,7 +2526,7 @@ async function loadFriends() {
             });
             outgoing.forEach(function(r) {
                 html += '<div class="friend-card">' +
-                    '<div><span class="friend-name">' + escapeHtml(r.username) + '</span> <span class="friend-code">#' + r.user_code + '</span></div>' +
+                    '<div><span class="friend-name">' + escapeHtml(displayName(r)) + '</span> <span class="friend-code">#' + r.user_code + '</span></div>' +
                     '<div style="font-size:12px;color:var(--text3)">Pending...</div></div>';
             });
             reqList.innerHTML = html;
@@ -2537,12 +2541,13 @@ async function loadFriends() {
             return;
         }
         friendsEl.innerHTML = friends.map(function(f) {
+            var dn = displayName(f);
             return '<div class="friend-card">' +
-                '<div><span class="friend-name">' + escapeHtml(f.username) + '</span> <span class="friend-code">#' + f.user_code + '</span></div>' +
+                '<div><span class="friend-name">' + escapeHtml(dn) + '</span> <span class="friend-code">#' + f.user_code + '</span></div>' +
                 '<div class="friend-actions">' +
-                    '<button class="btn-friend-msg" onclick="openChat(' + f.user_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\')">Chat</button>' +
-                    '<button class="btn-friend-tip" onclick="openTipModal(' + f.user_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\')">Tip</button>' +
-                    '<button class="btn-friend-remove" onclick="removeFriend(' + f.friendship_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\')" title="Remove">&times;</button>' +
+                    '<button class="btn-friend-msg" onclick="openChat(' + f.user_id + ',\'' + escapeHtml(dn).replace(/'/g, "\\'") + '\')">Chat</button>' +
+                    '<button class="btn-friend-tip" onclick="openTipModal(' + f.user_id + ',\'' + escapeHtml(dn).replace(/'/g, "\\'") + '\')">Tip</button>' +
+                    '<button class="btn-friend-remove" onclick="removeFriend(' + f.friendship_id + ',\'' + escapeHtml(dn).replace(/'/g, "\\'") + '\')" title="Remove">&times;</button>' +
                 '</div></div>';
         }).join('');
     } catch (e) { console.error('Friends load error:', e); }
@@ -2565,7 +2570,7 @@ async function sendFriendRequest() {
             msg.textContent = data.error || 'Failed';
         } else {
             msg.style.color = 'var(--green)';
-            msg.textContent = 'Request sent to ' + data.username;
+            msg.textContent = 'Request sent to ' + (data.display_name || data.username);
             document.getElementById('addFriendCode').value = '';
             loadFriends();
         }
@@ -2607,11 +2612,12 @@ async function loadConversations() {
             return;
         }
         el.innerHTML = convos.map(function(c) {
-            var initial = c.username.charAt(0).toUpperCase();
+            var dn = displayName(c);
+            var initial = dn.charAt(0).toUpperCase();
             var timeStr = c.last_time ? formatTime(c.last_time) : '';
-            return '<div class="convo-item" onclick="openChat(' + c.user_id + ',\'' + escapeHtml(c.username).replace(/'/g, "\\'") + '\')">' +
+            return '<div class="convo-item" onclick="openChat(' + c.user_id + ',\'' + escapeHtml(dn).replace(/'/g, "\\'") + '\')">' +
                 '<div class="convo-avatar">' + initial + '</div>' +
-                '<div class="convo-info"><div class="convo-name">' + escapeHtml(c.username) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
+                '<div class="convo-info"><div class="convo-name">' + escapeHtml(dn) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
                 '<div class="convo-meta"><div class="convo-time">' + timeStr + '</div>' +
                     (c.unread > 0 ? '<div class="convo-unread">' + c.unread + '</div>' : '') +
                 '</div></div>';
@@ -2774,7 +2780,8 @@ async function loadTips() {
             return;
         }
         el.innerHTML = tips.map(function(t) {
-            var label = _tipsDirection === 'received' ? 'From: ' + escapeHtml(t.other_username) : 'To: ' + escapeHtml(t.other_username);
+            var otherName = t.other_display_name || t.other_username;
+            var label = _tipsDirection === 'received' ? 'From: ' + escapeHtml(otherName) : 'To: ' + escapeHtml(otherName);
             var details = '';
             if (t.breakout_price) details += 'Breakout: $' + t.breakout_price.toFixed(2) + '  ';
             if (t.stop_loss) details += 'Stop: $' + t.stop_loss.toFixed(2);
@@ -2816,7 +2823,7 @@ async function viewTipDetail(tipId) {
             '<div class="result-hero" style="margin-bottom:0">' +
                 '<div class="result-top"><span class="result-ticker">' + escapeHtml(tip.ticker) + '</span></div>' +
                 '<div class="badges"><span class="badge badge-info">Stock Tip</span>' + expiryBadge + '</div>' +
-                '<p style="color:var(--text2);font-size:13px;margin-top:8px">From: ' + escapeHtml(tip.sender_username) + ' &rarr; ' + escapeHtml(tip.receiver_username) + '</p>' +
+                '<p style="color:var(--text2);font-size:13px;margin-top:8px">From: ' + escapeHtml(tip.sender_display_name || tip.sender_username) + ' &rarr; ' + escapeHtml(tip.receiver_display_name || tip.receiver_username) + '</p>' +
                 '<p style="color:var(--text3);font-size:12px">' + (tip.created_at ? new Date(tip.created_at).toLocaleString() : '') + '</p>' +
             '</div>' +
             (details ? '<div class="card" style="margin-top:16px"><div class="card-title">Trade Setup</div>' + details + '</div>' : '') +
@@ -2877,7 +2884,7 @@ async function openTipFromPortfolio(ticker, existingShareToken, breakoutPrice, s
         }
 
         if (friends.length === 1) {
-            openTipModal(friends[0].user_id, friends[0].username);
+            openTipModal(friends[0].user_id, displayName(friends[0]));
             prefillTipFields(ticker, shareToken, breakoutPrice, stopLoss);
             return;
         }
@@ -2886,8 +2893,9 @@ async function openTipFromPortfolio(ticker, existingShareToken, breakoutPrice, s
         var slSafe = stopLoss || '';
         var pickerHtml = '<div class="pf-modal-title">Send Tip: ' + ticker + '</div><div class="pf-modal-sub">Select a friend</div>';
         friends.forEach(function(f) {
-            pickerHtml += '<div class="friend-card" style="cursor:pointer" onclick="selectFriendForTip(' + f.user_id + ',\'' + escapeHtml(f.username).replace(/'/g, "\\'") + '\',\'' + ticker + '\',\'' + shareToken + '\',\'' + bpSafe + '\',\'' + slSafe + '\')">' +
-                '<span class="friend-name">' + escapeHtml(f.username) + '</span></div>';
+            var fn = displayName(f);
+            pickerHtml += '<div class="friend-card" style="cursor:pointer" onclick="selectFriendForTip(' + f.user_id + ',\'' + escapeHtml(fn).replace(/'/g, "\\'") + '\',\'' + ticker + '\',\'' + shareToken + '\',\'' + bpSafe + '\',\'' + slSafe + '\')">' +
+                '<span class="friend-name">' + escapeHtml(fn) + '</span></div>';
         });
         modalContent.innerHTML = pickerHtml;
         modalOverlay.classList.add('active');
@@ -3049,11 +3057,12 @@ async function loadSidebarConversations() {
             return;
         }
         el.innerHTML = convos.map(function(c) {
-            var initial = c.username.charAt(0).toUpperCase();
+            var dn = displayName(c);
+            var initial = dn.charAt(0).toUpperCase();
             var timeStr = c.last_time ? formatTime(c.last_time) : '';
-            return '<div class="convo-item" onclick="openSidebarChat(' + c.user_id + ',\'' + escapeHtml(c.username).replace(/'/g, "\\'") + '\')">' +
+            return '<div class="convo-item" onclick="openSidebarChat(' + c.user_id + ',\'' + escapeHtml(dn).replace(/'/g, "\\'") + '\')">' +
                 '<div class="convo-avatar">' + initial + '</div>' +
-                '<div class="convo-info"><div class="convo-name">' + escapeHtml(c.username) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
+                '<div class="convo-info"><div class="convo-name">' + escapeHtml(dn) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
                 '<div class="convo-meta"><div class="convo-time">' + timeStr + '</div>' +
                     (c.unread > 0 ? '<div class="convo-unread">' + c.unread + '</div>' : '') +
                 '</div></div>';
@@ -3214,7 +3223,8 @@ async function loadSidebarTips() {
             return;
         }
         el.innerHTML = tips.map(function(t) {
-            var label = _sidebarTipsDirection === 'received' ? 'From: ' + escapeHtml(t.other_username) : 'To: ' + escapeHtml(t.other_username);
+            var otherName = t.other_display_name || t.other_username;
+            var label = _sidebarTipsDirection === 'received' ? 'From: ' + escapeHtml(otherName) : 'To: ' + escapeHtml(otherName);
             var details = '';
             if (t.breakout_price) details += 'Breakout: $' + t.breakout_price.toFixed(2) + '  ';
             if (t.stop_loss) details += 'Stop: $' + t.stop_loss.toFixed(2);
