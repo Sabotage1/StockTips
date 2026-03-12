@@ -70,7 +70,7 @@ body {
 .logo em { font-style: normal; color: var(--accent2); }
 
 .nav { display: flex; gap: 4px; align-items: center; }
-.nav-spacer { flex: 1; }
+.nav-btn-friends { margin-left: auto; }
 .nav-btn {
     display: flex; align-items: center; gap: 6px;
     padding: 8px 16px; border-radius: 8px;
@@ -1678,6 +1678,35 @@ body {
 .chat-sidebar-title {
     font-weight: 700;
     font-size: 16px;
+}
+.sidebar-tabs {
+    display: flex;
+    gap: 2px;
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 3px;
+}
+.sidebar-tab {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.sidebar-tab:hover { color: var(--text); }
+.sidebar-tab.active { color: var(--text); background: var(--accent); }
+.sidebar-tips-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 3px;
+    margin: 12px;
+    width: fit-content;
 }
 .chat-sidebar-close {
     background: none;

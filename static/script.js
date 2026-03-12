@@ -2341,9 +2341,11 @@ function showToast(notif) {
             }
         } else if (notif.type === 'tip') {
             if (currentPanel !== 'social') {
-                goToSocial();
+                openChatSidebar();
+                switchSidebarTab('tips');
+            } else {
+                switchSocialTab('tips');
             }
-            switchSocialTab('tips');
         } else {
             if (currentPanel !== 'social') {
                 goToSocial();
@@ -2842,6 +2844,8 @@ var _sidebarChatFriendId = null;
 var _sidebarChatFriendName = '';
 var _sidebarChatPollTimer = null;
 var _sidebarOpen = false;
+var _sidebarCurrentTab = 'chat';
+var _sidebarTipsDirection = 'received';
 
 function toggleChatSidebar() {
     if (_sidebarOpen) {
@@ -2865,7 +2869,12 @@ function closeChatSidebar() {
     stopSidebarChatPolling();
     _sidebarChatFriendId = null;
     _sidebarChatFriendName = '';
-    // Reset to conversations view
+    // Reset to chat tab and conversations view
+    _sidebarCurrentTab = 'chat';
+    document.getElementById('sidebarTabChat').classList.add('active');
+    document.getElementById('sidebarTabTips').classList.remove('active');
+    document.getElementById('sidebarChatSection').style.display = '';
+    document.getElementById('sidebarTipsSection').style.display = 'none';
     document.getElementById('sidebarChatView').style.display = 'none';
     document.getElementById('sidebarConversations').style.display = '';
 }
@@ -2989,10 +2998,63 @@ function openTipModalFromSidebarChat() {
 // Open sidebar chat directly to a specific friend
 function openSidebarChatDirect(friendId, friendName) {
     openChatSidebar();
-    // Small delay to let sidebar open, then open the chat
     setTimeout(function() {
         openSidebarChat(friendId, friendName);
     }, 50);
+}
+
+// --- Sidebar Tab Switching ---
+
+function switchSidebarTab(tab) {
+    _sidebarCurrentTab = tab;
+    document.getElementById('sidebarTabChat').classList.toggle('active', tab === 'chat');
+    document.getElementById('sidebarTabTips').classList.toggle('active', tab === 'tips');
+    if (tab === 'chat') {
+        document.getElementById('sidebarChatSection').style.display = '';
+        document.getElementById('sidebarTipsSection').style.display = 'none';
+        if (!_sidebarChatFriendId) loadSidebarConversations();
+    } else {
+        document.getElementById('sidebarChatSection').style.display = 'none';
+        document.getElementById('sidebarTipsSection').style.display = '';
+        stopSidebarChatPolling();
+        loadSidebarTips();
+    }
+}
+
+function switchSidebarTipsTab(direction) {
+    _sidebarTipsDirection = direction;
+    document.getElementById('sidebarTipsReceivedTab').classList.toggle('active', direction === 'received');
+    document.getElementById('sidebarTipsSentTab').classList.toggle('active', direction === 'sent');
+    loadSidebarTips();
+}
+
+async function loadSidebarTips() {
+    try {
+        var resp = await fetch(API + '/api/tips?direction=' + _sidebarTipsDirection);
+        var tips = await resp.json();
+        var el = document.getElementById('sidebarTipsList');
+        if (!tips.length) {
+            el.innerHTML = '<p style="color:var(--text3);font-size:13px">No ' + _sidebarTipsDirection + ' tips yet.</p>';
+            return;
+        }
+        el.innerHTML = tips.map(function(t) {
+            var label = _sidebarTipsDirection === 'received' ? 'From: ' + escapeHtml(t.other_username) : 'To: ' + escapeHtml(t.other_username);
+            var details = '';
+            if (t.breakout_price) details += 'Breakout: $' + t.breakout_price.toFixed(2) + '  ';
+            if (t.stop_loss) details += 'Stop: $' + t.stop_loss.toFixed(2);
+            var timeStr = t.created_at ? formatTime(t.created_at) : '';
+            var unreadDot = (!t.is_read && _sidebarTipsDirection === 'received') ? '<span class="tip-unread-dot"></span>' : '';
+            return '<div class="tip-card" onclick="viewTipDetail(' + t.id + ')">' +
+                '<div class="tip-card-header">' +
+                    '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span></span>' +
+                    '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
+                '</div>' +
+                (details ? '<div class="tip-card-details">' + details + '</div>' : '') +
+                (t.message ? '<div class="tip-card-msg">' + escapeHtml(t.message).substring(0, 120) + '</div>' : '') +
+                (t.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + t.analysis_share_token + '" target="_blank" onclick="event.stopPropagation()">View Analysis</a>' : '') +
+                '</div>';
+        }).join('');
+    } catch (e) { console.error('Sidebar tips error:', e); }
 }
 
 // --- Init Social ---
