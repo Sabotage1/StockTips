@@ -1107,64 +1107,93 @@ def get_conversation_messages(user_id: int, other_id: int, limit: int = 100, bef
 
 def get_conversations(user_id: int) -> List[dict]:
     """Get list of conversations with last message and unread count."""
-    from sqlalchemy import func, case, or_, and_
+    from sqlalchemy import func, case, or_, and_, literal
     db = SessionLocal()
     try:
-        # Get all unique conversation partners
-        sent = db.query(Message.receiver_id.label("other_id")).filter(Message.sender_id == user_id)
-        received = db.query(Message.sender_id.label("other_id")).filter(Message.receiver_id == user_id)
+        # Collect all partner IDs in one pass using UNION
         partner_ids = set()
-        for row in sent.all():
-            partner_ids.add(row.other_id)
-        for row in received.all():
-            partner_ids.add(row.other_id)
+        msg_partners = db.execute(
+            db.query(
+                case([(Message.sender_id == user_id, Message.receiver_id)], else_=Message.sender_id).label("pid")
+            ).filter(
+                (Message.sender_id == user_id) | (Message.receiver_id == user_id)
+            ).distinct().statement
+        ).fetchall()
+        for row in msg_partners:
+            partner_ids.add(row[0])
+        tip_partners = db.execute(
+            db.query(
+                case([(Tip.sender_id == user_id, Tip.receiver_id)], else_=Tip.sender_id).label("pid")
+            ).filter(
+                (Tip.sender_id == user_id) | (Tip.receiver_id == user_id)
+            ).distinct().statement
+        ).fetchall()
+        for row in tip_partners:
+            partner_ids.add(row[0])
 
-        # Also include friends who sent tips (tips show in chat)
-        tip_senders = db.query(Tip.sender_id.label("other_id")).filter(Tip.receiver_id == user_id)
-        tip_receivers = db.query(Tip.receiver_id.label("other_id")).filter(Tip.sender_id == user_id)
-        for row in tip_senders.all():
-            partner_ids.add(row.other_id)
-        for row in tip_receivers.all():
-            partner_ids.add(row.other_id)
+        if not partner_ids:
+            return []
 
+        # Batch-load all partner users
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(partner_ids)).all()}
+
+        # Bulk: last message per partner
+        all_msgs = db.query(Message).filter(
+            (Message.sender_id == user_id) | (Message.receiver_id == user_id)
+        ).order_by(Message.created_at.desc()).all()
+        last_msg_by_partner = {}
+        for m in all_msgs:
+            pid = m.receiver_id if m.sender_id == user_id else m.sender_id
+            if pid not in last_msg_by_partner:
+                last_msg_by_partner[pid] = m
+
+        # Bulk: last tip per partner
+        all_tips = db.query(Tip).filter(
+            (Tip.sender_id == user_id) | (Tip.receiver_id == user_id)
+        ).order_by(Tip.created_at.desc()).all()
+        last_tip_by_partner = {}
+        for t in all_tips:
+            pid = t.receiver_id if t.sender_id == user_id else t.sender_id
+            if pid not in last_tip_by_partner:
+                last_tip_by_partner[pid] = t
+
+        # Bulk: unread message counts
+        unread_msg_rows = db.query(
+            Message.sender_id, func.count(Message.id)
+        ).filter(
+            Message.receiver_id == user_id,
+            Message.is_read == 0,
+            Message.sender_id.in_(partner_ids),
+        ).group_by(Message.sender_id).all()
+        unread_msgs = {row[0]: row[1] for row in unread_msg_rows}
+
+        # Bulk: unread tip counts
+        unread_tip_rows = db.query(
+            Tip.sender_id, func.count(Tip.id)
+        ).filter(
+            Tip.receiver_id == user_id,
+            Tip.is_read == 0,
+            Tip.sender_id.in_(partner_ids),
+        ).group_by(Tip.sender_id).all()
+        unread_tips = {row[0]: row[1] for row in unread_tip_rows}
+
+        # Build conversation list
         convos = []
         for pid in partner_ids:
-            other = db.query(User).filter(User.id == pid).first()
+            other = users.get(pid)
             if not other:
                 continue
-            # Last message
-            last_msg = db.query(Message).filter(
-                ((Message.sender_id == user_id) & (Message.receiver_id == pid)) |
-                ((Message.sender_id == pid) & (Message.receiver_id == user_id))
-            ).order_by(Message.created_at.desc()).first()
-            # Last tip between these users
-            last_tip = db.query(Tip).filter(
-                ((Tip.sender_id == user_id) & (Tip.receiver_id == pid)) |
-                ((Tip.sender_id == pid) & (Tip.receiver_id == user_id))
-            ).order_by(Tip.created_at.desc()).first()
-            # Determine which is most recent
+            last_msg = last_msg_by_partner.get(pid)
+            last_tip = last_tip_by_partner.get(pid)
             last_time = None
             last_preview = ""
             if last_msg:
                 last_time = last_msg.created_at
                 last_preview = last_msg.content[:60]
             if last_tip:
-                tip_time = last_tip.created_at
-                if not last_time or tip_time > last_time:
-                    last_time = tip_time
+                if not last_time or last_tip.created_at > last_time:
+                    last_time = last_tip.created_at
                     last_preview = "[Tip] " + last_tip.ticker
-            # Unread messages count
-            unread = db.query(Message).filter(
-                Message.sender_id == pid,
-                Message.receiver_id == user_id,
-                Message.is_read == 0
-            ).count()
-            # Unread tips count
-            unread_tips = db.query(Tip).filter(
-                Tip.sender_id == pid,
-                Tip.receiver_id == user_id,
-                Tip.is_read == 0
-            ).count()
             convos.append({
                 "user_id": other.id,
                 "username": other.username,
@@ -1172,7 +1201,7 @@ def get_conversations(user_id: int) -> List[dict]:
                 "user_code": other.user_code or "",
                 "last_message": last_preview,
                 "last_time": last_time.isoformat() if last_time else "",
-                "unread": unread + unread_tips,
+                "unread": unread_msgs.get(pid, 0) + unread_tips.get(pid, 0),
             })
         convos.sort(key=lambda c: c["last_time"] or "", reverse=True)
         return convos
@@ -1255,6 +1284,192 @@ def get_tips(user_id: int, direction: str = "received") -> List[dict]:
                 "created_at": t.created_at.isoformat() if t.created_at else "",
             })
         return result
+    finally:
+        db.close()
+
+
+def get_social_init(user_id: int) -> dict:
+    """Return all social data in a single DB session to avoid multiple round-trips."""
+    from sqlalchemy import func, case
+    db = SessionLocal()
+    try:
+        # --- Friends ---
+        friend_rows = db.query(Friendship).filter(
+            Friendship.status == "accepted",
+            (Friendship.user_id == user_id) | (Friendship.friend_id == user_id)
+        ).all()
+        friend_other_ids = [f.friend_id if f.user_id == user_id else f.user_id for f in friend_rows]
+
+        # --- Incoming requests ---
+        incoming_rows = db.query(Friendship).filter(
+            Friendship.friend_id == user_id,
+            Friendship.status == "pending"
+        ).order_by(Friendship.created_at.desc()).all()
+        incoming_sender_ids = [f.user_id for f in incoming_rows]
+
+        # --- Outgoing requests ---
+        outgoing_rows = db.query(Friendship).filter(
+            Friendship.user_id == user_id,
+            Friendship.status == "pending"
+        ).order_by(Friendship.created_at.desc()).all()
+        outgoing_recipient_ids = [f.friend_id for f in outgoing_rows]
+
+        # Batch-load all referenced users in one query
+        all_user_ids = set(friend_other_ids + incoming_sender_ids + outgoing_recipient_ids)
+
+        # --- Conversations: collect partner IDs ---
+        partner_ids = set()
+        msg_partners = db.execute(
+            db.query(
+                case([(Message.sender_id == user_id, Message.receiver_id)], else_=Message.sender_id).label("pid")
+            ).filter(
+                (Message.sender_id == user_id) | (Message.receiver_id == user_id)
+            ).distinct().statement
+        ).fetchall()
+        for row in msg_partners:
+            partner_ids.add(row[0])
+        tip_partners = db.execute(
+            db.query(
+                case([(Tip.sender_id == user_id, Tip.receiver_id)], else_=Tip.sender_id).label("pid")
+            ).filter(
+                (Tip.sender_id == user_id) | (Tip.receiver_id == user_id)
+            ).distinct().statement
+        ).fetchall()
+        for row in tip_partners:
+            partner_ids.add(row[0])
+
+        all_user_ids.update(partner_ids)
+
+        # --- Tips ---
+        tip_rows = db.query(Tip).filter(Tip.receiver_id == user_id).order_by(Tip.created_at.desc()).all()
+        tip_other_ids = list(set(t.sender_id for t in tip_rows))
+        all_user_ids.update(tip_other_ids)
+
+        # Single batch user load
+        users = {u.id: u for u in db.query(User).filter(User.id.in_(all_user_ids)).all()} if all_user_ids else {}
+
+        # Build friends list
+        friends = []
+        for f in friend_rows:
+            other_id = f.friend_id if f.user_id == user_id else f.user_id
+            other = users.get(other_id)
+            if other:
+                friends.append({
+                    "friendship_id": f.id, "user_id": other.id,
+                    "username": other.username, "display_name": other.display_name or "",
+                    "user_code": other.user_code or "",
+                    "since": f.updated_at.isoformat() if f.updated_at else "",
+                })
+
+        # Build incoming requests
+        incoming = []
+        for f in incoming_rows:
+            sender = users.get(f.user_id)
+            if sender:
+                incoming.append({
+                    "id": f.id, "user_id": sender.id,
+                    "username": sender.username, "display_name": sender.display_name or "",
+                    "user_code": sender.user_code or "",
+                    "created_at": f.created_at.isoformat() if f.created_at else "",
+                })
+
+        # Build outgoing requests
+        outgoing = []
+        for f in outgoing_rows:
+            recipient = users.get(f.friend_id)
+            if recipient:
+                outgoing.append({
+                    "id": f.id, "user_id": recipient.id,
+                    "username": recipient.username, "display_name": recipient.display_name or "",
+                    "user_code": recipient.user_code or "",
+                    "created_at": f.created_at.isoformat() if f.created_at else "",
+                })
+
+        # Build conversations
+        convos = []
+        if partner_ids:
+            all_msgs = db.query(Message).filter(
+                (Message.sender_id == user_id) | (Message.receiver_id == user_id)
+            ).order_by(Message.created_at.desc()).all()
+            last_msg_by_partner = {}
+            for m in all_msgs:
+                pid = m.receiver_id if m.sender_id == user_id else m.sender_id
+                if pid not in last_msg_by_partner:
+                    last_msg_by_partner[pid] = m
+
+            all_tips_conv = db.query(Tip).filter(
+                (Tip.sender_id == user_id) | (Tip.receiver_id == user_id)
+            ).order_by(Tip.created_at.desc()).all()
+            last_tip_by_partner = {}
+            for t in all_tips_conv:
+                pid = t.receiver_id if t.sender_id == user_id else t.sender_id
+                if pid not in last_tip_by_partner:
+                    last_tip_by_partner[pid] = t
+
+            unread_msg_rows = db.query(
+                Message.sender_id, func.count(Message.id)
+            ).filter(
+                Message.receiver_id == user_id, Message.is_read == 0,
+                Message.sender_id.in_(partner_ids),
+            ).group_by(Message.sender_id).all()
+            unread_msgs = {row[0]: row[1] for row in unread_msg_rows}
+
+            unread_tip_rows = db.query(
+                Tip.sender_id, func.count(Tip.id)
+            ).filter(
+                Tip.receiver_id == user_id, Tip.is_read == 0,
+                Tip.sender_id.in_(partner_ids),
+            ).group_by(Tip.sender_id).all()
+            unread_tips_map = {row[0]: row[1] for row in unread_tip_rows}
+
+            for pid in partner_ids:
+                other = users.get(pid)
+                if not other:
+                    continue
+                last_msg = last_msg_by_partner.get(pid)
+                last_tip = last_tip_by_partner.get(pid)
+                last_time = None
+                last_preview = ""
+                if last_msg:
+                    last_time = last_msg.created_at
+                    last_preview = last_msg.content[:60]
+                if last_tip:
+                    if not last_time or last_tip.created_at > last_time:
+                        last_time = last_tip.created_at
+                        last_preview = "[Tip] " + last_tip.ticker
+                convos.append({
+                    "user_id": other.id, "username": other.username,
+                    "display_name": other.display_name or "",
+                    "user_code": other.user_code or "",
+                    "last_message": last_preview,
+                    "last_time": last_time.isoformat() if last_time else "",
+                    "unread": unread_msgs.get(pid, 0) + unread_tips_map.get(pid, 0),
+                })
+            convos.sort(key=lambda c: c["last_time"] or "", reverse=True)
+
+        # Build tips list
+        tips = []
+        for t in tip_rows:
+            other = users.get(t.sender_id)
+            tips.append({
+                "id": t.id, "sender_id": t.sender_id, "receiver_id": t.receiver_id,
+                "other_username": other.username if other else "",
+                "other_display_name": other.display_name if other else "",
+                "ticker": t.ticker, "breakout_price": t.breakout_price,
+                "stop_loss": t.stop_loss, "message": t.message,
+                "analysis_share_token": t.analysis_share_token,
+                "expires_at": t.expires_at.isoformat() if t.expires_at else None,
+                "is_read": t.is_read,
+                "created_at": t.created_at.isoformat() if t.created_at else "",
+            })
+
+        return {
+            "friends": friends,
+            "incoming": incoming,
+            "outgoing": outgoing,
+            "conversations": convos,
+            "tips": tips,
+        }
     finally:
         db.close()
 

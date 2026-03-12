@@ -2462,9 +2462,17 @@ function displayName(obj) {
 
 // --- Social Panel ---
 
-function loadSocialPanel() {
-    switchSocialTab(_socialCurrentTab);
+var _socialData = null;
+
+async function loadSocialPanel() {
     markAllNotificationsRead();
+    // Fetch all social data in one request
+    try {
+        var resp = await fetch(API + '/api/social/init');
+        if (resp.ok) _socialData = await resp.json();
+    } catch (e) { console.error('Social init error:', e); }
+    switchSocialTab(_socialCurrentTab);
+    _socialData = null;  // Clear cache so subsequent actions fetch fresh data
 }
 
 function markAllNotificationsRead() {
@@ -2501,14 +2509,21 @@ function switchSocialTab(tab) {
 
 async function loadFriends() {
     try {
-        var [friendsResp, inResp, outResp] = await Promise.all([
-            fetch(API + '/api/friends'),
-            fetch(API + '/api/friends/requests'),
-            fetch(API + '/api/friends/outgoing'),
-        ]);
-        var friends = await friendsResp.json();
-        var incoming = await inResp.json();
-        var outgoing = await outResp.json();
+        var friends, incoming, outgoing;
+        if (_socialData) {
+            friends = _socialData.friends;
+            incoming = _socialData.incoming;
+            outgoing = _socialData.outgoing;
+        } else {
+            var [friendsResp, inResp, outResp] = await Promise.all([
+                fetch(API + '/api/friends'),
+                fetch(API + '/api/friends/requests'),
+                fetch(API + '/api/friends/outgoing'),
+            ]);
+            friends = await friendsResp.json();
+            incoming = await inResp.json();
+            outgoing = await outResp.json();
+        }
 
         // Pending requests
         var reqSection = document.getElementById('friendRequestsSection');
@@ -2604,8 +2619,13 @@ async function removeFriend(id, name) {
 
 async function loadConversations() {
     try {
-        var resp = await fetch(API + '/api/conversations');
-        var convos = await resp.json();
+        var convos;
+        if (_socialData) {
+            convos = _socialData.conversations;
+        } else {
+            var resp = await fetch(API + '/api/conversations');
+            convos = await resp.json();
+        }
         var el = document.getElementById('convoList');
         if (!convos.length) {
             el.innerHTML = '<p style="color:var(--text3);font-size:13px">No conversations yet. Add a friend and start chatting!</p>';
@@ -2772,8 +2792,13 @@ function switchTipsTab(direction) {
 
 async function loadTips() {
     try {
-        var resp = await fetch(API + '/api/tips?direction=' + _tipsDirection);
-        var tips = await resp.json();
+        var tips;
+        if (_socialData && _tipsDirection === 'received') {
+            tips = _socialData.tips;
+        } else {
+            var resp = await fetch(API + '/api/tips?direction=' + _tipsDirection);
+            tips = await resp.json();
+        }
         var el = document.getElementById('tipsList');
         if (!tips.length) {
             el.innerHTML = '<p style="color:var(--text3);font-size:13px">No ' + _tipsDirection + ' tips yet.</p>';

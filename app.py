@@ -30,7 +30,7 @@ from database import (
     get_outgoing_friend_requests, accept_friend_request, decline_friend_request,
     delete_friendship, are_friends,
     create_message, get_conversation_messages, get_conversations, mark_messages_read,
-    create_tip, get_tips, get_tip_by_id, mark_tip_read, get_tips_in_conversation,
+    create_tip, get_tips, get_tip_by_id, mark_tip_read, get_tips_in_conversation, get_social_init,
     delete_message, delete_tip, toggle_reaction, get_reactions_for_items,
     create_notification, get_notifications, get_unread_notification_counts,
     mark_notification_read, mark_all_notifications_read,
@@ -1277,6 +1277,18 @@ async def api_portfolio_analyze(request: Request, item_id: int):
     except Exception as e:
         logger.error("Portfolio analysis error for {}: {}".format(item.ticker, e))
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# --- Social Init (combined endpoint) ---
+
+@app.get("/api/social/init")
+async def api_social_init(request: Request):
+    """Return all social data in one response: friends, requests, conversations, tips."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(get_social_init(user_id))
 
 
 # --- Friends API ---
