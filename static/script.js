@@ -2903,8 +2903,14 @@ function selectFriendForTip(friendId, friendName, ticker, shareToken, breakoutPr
 function prefillTipFields(ticker, shareToken, breakoutPrice, stopLoss) {
     document.getElementById('tipTicker').value = ticker || '';
     document.getElementById('tipShareToken').value = shareToken || '';
-    if (breakoutPrice) document.getElementById('tipBreakout').value = Math.round(parseFloat(breakoutPrice));
-    if (stopLoss) document.getElementById('tipStopLoss').value = Math.round(parseFloat(stopLoss));
+    if (breakoutPrice) {
+        var bp = String(breakoutPrice).replace(/[^0-9.]/g, '');
+        if (bp && !isNaN(parseFloat(bp))) document.getElementById('tipBreakout').value = Math.round(parseFloat(bp));
+    }
+    if (stopLoss) {
+        var sl = String(stopLoss).replace(/[^0-9.]/g, '');
+        if (sl && !isNaN(parseFloat(sl))) document.getElementById('tipStopLoss').value = Math.round(parseFloat(sl));
+    }
 }
 
 async function submitTip() {
