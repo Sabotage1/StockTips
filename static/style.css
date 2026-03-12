@@ -1239,6 +1239,8 @@ body {
     border-radius: var(--radius-sm);
     padding: 4px;
     width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
 }
 .social-tab {
     background: none;
@@ -1261,6 +1263,7 @@ body {
     border-radius: var(--radius);
     padding: 20px;
     max-width: 400px;
+    margin-left: auto;
 }
 .friend-card {
     display: flex;
