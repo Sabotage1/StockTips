@@ -61,7 +61,7 @@
                 Logout
             </a>
             {% if user_role == 'admin' %}
-            <span class="version-tag">v1.6.1</span>
+            <span class="version-tag">v1.6.2</span>
             {% elif user_code %}
             <span class="version-tag">ID: {{ user_code }}</span>
             {% endif %}
@@ -155,7 +155,7 @@
                         <th>Signal</th>
                         <th>Confidence</th>
                         <th id="thUser" style="display:none">User</th>
-                        <th>Source</th>
+                        <th id="thSource">Source</th>
                         <th>Date</th>
                         <th>Actions</th>
                     </tr>
