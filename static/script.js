@@ -3287,15 +3287,8 @@ async function loadSidebarTips() {
 
 // --- Init Social ---
 // Fetch user id for chat bubble direction
-async function initSocial() {
-    try {
-        var resp = await fetch(API + '/api/me');
-        if (!resp.ok) return;
-        var data = await resp.json();
-        // We don't get user id from /api/me by default but we can infer from messages
-    } catch (e) { /* ignore */ }
+function initSocial() {
     startNotificationPolling();
-    updateFloatingChatBtn();
 }
 
 // Hook into page lifecycle
