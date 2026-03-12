@@ -899,10 +899,10 @@ async function loadPortfolio() {
         if (summary) summary.style.display = 'none';
         if (pieWrap) pieWrap.style.display = 'none';
         if (addForm) addForm.style.display = 'none';
-        if (pfLoading) pfLoading.style.display = '';
+        if (pfLoading) pfLoading.classList.add('active');
     }
     await refreshPortfolioPrices();
-    if (pfLoading) pfLoading.style.display = 'none';
+    if (pfLoading) pfLoading.classList.remove('active');
     if (tableWrap) tableWrap.style.display = '';
     if (summary) summary.style.display = '';
     if (addForm) addForm.style.display = '';
