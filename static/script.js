@@ -828,7 +828,7 @@ async function refreshPortfolioPrices() {
                 return { id: it.id, ticker: it.ticker, company_name: it.company_name,
                     shares: it.shares, purchase_price: it.purchase_price, stop_loss: it.stop_loss,
                     current_price: null, market_value: null, pnl: null, pnl_pct: null,
-                    day_pnl: null, day_change_pct: null, pct_of_portfolio: null, signals: [] };
+                    day_pnl: null, day_pnl_pct_avg: null, day_change_pct: null, pct_of_portfolio: null, signals: [] };
             }), totals: {} };
         } else {
             portfolioData = await resp.json();
@@ -1037,7 +1037,7 @@ function renderPortfolioTable(items) {
     const tbody = document.getElementById('portfolioBody');
     if (!tbody) return;
     if (!items || !items.length) {
-        tbody.innerHTML = '<tr><td colspan="12" class="empty-row">No stocks in portfolio yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="empty-row">No stocks in portfolio yet</td></tr>';
         return;
     }
     tbody.innerHTML = items.map(function(it) {
@@ -1051,6 +1051,8 @@ function renderPortfolioTable(items) {
         const portPct = it.pct_of_portfolio != null ? it.pct_of_portfolio.toFixed(1) + '%' : 'N/A';
         const dayPnl = it.day_pnl != null ? ((it.day_pnl >= 0 ? '+$' : '-$') + Math.abs(it.day_pnl).toFixed(2)) : 'N/A';
         const dayPnlColor = it.day_pnl != null ? (it.day_pnl >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
+        const dayPnlPctAvg = it.day_pnl_pct_avg != null ? ((it.day_pnl_pct_avg >= 0 ? '+' : '') + it.day_pnl_pct_avg.toFixed(2) + '%') : 'N/A';
+        const dayPnlPctAvgColor = it.day_pnl_pct_avg != null ? (it.day_pnl_pct_avg >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text2)';
 
         var signalsHtml = '';
         if (it.signals && it.signals.length) {
@@ -1070,6 +1072,7 @@ function renderPortfolioTable(items) {
             '<td data-col="pnl" style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + '">' + pnl + '</td>' +
             '<td data-col="pnl_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + pnlColor + ';font-weight:600">' + pnlPct + '</td>' +
             '<td data-col="day_pnl" style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlColor + ';font-weight:600">' + dayPnl + '</td>' +
+            '<td data-col="day_pnl_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlPctAvgColor + ';font-weight:600">' + dayPnlPctAvg + '</td>' +
             '<td data-col="day_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayColor + ';font-weight:600">' + (dayChg || 'N/A') + '</td>' +
             '<td data-col="signals" style="max-width:200px">' + signalsHtml + '</td>' +
             '<td data-col="actions" style="white-space:nowrap">' +
@@ -1235,7 +1238,7 @@ async function analyzePortfolioItem(id, ticker) {
 var COLUMN_LABELS = {
     ticker: 'Ticker', shares: 'Shares', avg_cost: 'Avg Cost', price: 'Price',
     mkt_value: 'Mkt Value', pct_port: '% Portfolio', pnl: 'P&L', pnl_pct: 'P&L %',
-    day_pnl: 'Day P&L', day_pct: 'Day %', signals: 'Signals', actions: 'Actions'
+    day_pnl: 'Day P&L', day_pnl_pct: 'Day P&L %', day_pct: 'Day %', signals: 'Signals', actions: 'Actions'
 };
 var CARD_LABELS = {
     total_value: 'Total Value', total_cost: 'Total Cost', total_pnl: 'Total P&L',

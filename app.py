@@ -1011,6 +1011,7 @@ async def api_portfolio_refresh(request: Request):
 
         day_change = sig.get("day_change")
         day_pnl = round(day_change * it.shares, 2) if day_change is not None else None
+        day_pnl_pct_avg = round(day_change / it.purchase_price * 100, 2) if day_change is not None and it.purchase_price else None
         if day_pnl is not None:
             total_day_pnl += day_pnl
 
@@ -1030,6 +1031,7 @@ async def api_portfolio_refresh(request: Request):
             "day_change": day_change,
             "day_change_pct": sig.get("day_change_pct"),
             "day_pnl": day_pnl,
+            "day_pnl_pct_avg": day_pnl_pct_avg,
             "market_value": round(market_value, 2) if market_value else None,
             "pnl": round(pnl, 2) if pnl is not None else None,
             "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
