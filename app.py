@@ -383,11 +383,17 @@ async def api_history(request: Request, ticker: str = "", days: int = 30, scope:
 
 
 @app.get("/api/analysis/{analysis_id}")
-async def api_analysis_detail(analysis_id: int):
-    """Get detailed analysis by ID."""
+async def api_analysis_detail(request: Request, analysis_id: int):
+    """Get detailed analysis by ID (user can only view their own, admin can view all)."""
     ensure_db()
     record = get_analysis_by_id(analysis_id)
     if not record:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    # Ownership check: user can only view their own analyses
+    session = _get_session(request)
+    web_user = session["user"] if session else None
+    if not _is_admin(request) and record.web_user != web_user:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     news_data = []
@@ -451,17 +457,19 @@ async def api_analysis_detail(analysis_id: int):
 
 
 @app.get("/api/chart/{ticker}")
-async def api_chart(ticker: str):
+async def api_chart(request: Request, ticker: str):
     """Generate a candlestick chart PNG for a ticker with analysis overlays."""
     ensure_db()
     ticker = ticker.strip().upper()
     if not ticker or len(ticker) > 10:
         return JSONResponse({"error": "Invalid ticker"}, status_code=400)
     try:
-        # Look up latest analysis for overlays
+        # Look up latest analysis for overlays (scoped to current user)
         from database import get_recent_analysis
+        session = _get_session(request)
+        web_user = session["user"] if session else None
         analysis_data = None
-        cached = get_recent_analysis(ticker, max_age_minutes=120)
+        cached = get_recent_analysis(ticker, max_age_minutes=120, web_user=web_user)
         if cached and cached.analysis_json:
             try:
                 analysis_data = json.loads(cached.analysis_json)
@@ -569,10 +577,14 @@ async def api_delete_history(request: Request, ticker: str = ""):
 
 
 @app.get("/api/tickers")
-async def api_tickers():
-    """Get all unique tickers that have been analyzed."""
+async def api_tickers(request: Request):
+    """Get unique tickers analyzed by the current user (admin sees all)."""
     ensure_db()
-    return JSONResponse(get_unique_tickers())
+    session = _get_session(request)
+    web_user = session["user"] if session else None
+    if _is_admin(request):
+        return JSONResponse(get_unique_tickers())
+    return JSONResponse(get_unique_tickers(web_user=web_user))
 
 
 @app.get("/api/usage")
@@ -626,8 +638,10 @@ async def api_unblock_user(request: Request):
 
 
 @app.get("/api/blocked-users")
-async def api_blocked_users():
-    """List all blocked Telegram users."""
+async def api_blocked_users(request: Request):
+    """List all blocked Telegram users (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     ensure_db()
     records = get_blocked_users()
     return JSONResponse([
@@ -643,8 +657,10 @@ async def api_blocked_users():
 
 
 @app.get("/api/is-blocked/{telegram_user_id}")
-async def api_is_blocked(telegram_user_id: str):
-    """Check if a Telegram user is blocked."""
+async def api_is_blocked(request: Request, telegram_user_id: str):
+    """Check if a Telegram user is blocked (admin only)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     ensure_db()
     blocked = is_user_blocked(telegram_user_id)
     return JSONResponse({"telegram_user_id": telegram_user_id, "blocked": blocked})

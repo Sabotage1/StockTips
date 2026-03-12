@@ -289,18 +289,20 @@ def get_analysis_by_share_token(token: str) -> Optional[TickerAnalysis]:
         db.close()
 
 
-def get_recent_analysis(ticker: str, max_age_minutes: int = 60) -> Optional[TickerAnalysis]:
-    """Get the most recent analysis for a ticker if it's within max_age_minutes."""
+def get_recent_analysis(ticker: str, max_age_minutes: int = 60, web_user: Optional[str] = None) -> Optional[TickerAnalysis]:
+    """Get the most recent analysis for a ticker if it's within max_age_minutes.
+    If web_user is provided, only return that user's analysis."""
     db = SessionLocal()
     try:
         cutoff = datetime.datetime.utcnow() - datetime.timedelta(minutes=max_age_minutes)
-        return (
+        query = (
             db.query(TickerAnalysis)
             .filter(TickerAnalysis.ticker == ticker.upper())
             .filter(TickerAnalysis.created_at >= cutoff)
-            .order_by(TickerAnalysis.created_at.desc())
-            .first()
         )
+        if web_user:
+            query = query.filter(TickerAnalysis.web_user == web_user)
+        return query.order_by(TickerAnalysis.created_at.desc()).first()
     finally:
         db.close()
 
@@ -334,10 +336,13 @@ def delete_all_history(ticker: Optional[str] = None) -> int:
         db.close()
 
 
-def get_unique_tickers() -> List[str]:
+def get_unique_tickers(web_user: Optional[str] = None) -> List[str]:
     db = SessionLocal()
     try:
-        results = db.query(TickerAnalysis.ticker).distinct().all()
+        query = db.query(TickerAnalysis.ticker)
+        if web_user:
+            query = query.filter(TickerAnalysis.web_user == web_user)
+        results = query.distinct().all()
         return [r[0] for r in results]
     finally:
         db.close()
