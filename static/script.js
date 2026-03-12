@@ -2840,7 +2840,8 @@ function openTipModal(friendId, friendName) {
     document.getElementById('tipStopLoss').value = '';
     document.getElementById('tipMessage').value = '';
     document.getElementById('tipShareToken').value = '';
-    document.getElementById('tipExpiry').value = '';
+    var expiryEl = document.getElementById('tipExpiry');
+    if (expiryEl) expiryEl.value = '';
     document.getElementById('tipError').style.display = 'none';
     document.getElementById('tipModalOverlay').classList.add('active');
     document.getElementById('tipTicker').focus();
@@ -2913,10 +2914,16 @@ async function submitTip() {
     var stopLoss = document.getElementById('tipStopLoss').value;
     var message = document.getElementById('tipMessage').value;
     var shareToken = document.getElementById('tipShareToken').value;
-    var expiryHours = document.getElementById('tipExpiry').value;
+    var expiryEl = document.getElementById('tipExpiry');
+    var expiryHours = expiryEl ? expiryEl.value : '';
     var errEl = document.getElementById('tipError');
     if (!ticker) {
         errEl.textContent = 'Ticker is required';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (!friendId) {
+        errEl.textContent = 'No friend selected';
         errEl.style.display = 'block';
         return;
     }
@@ -2933,7 +2940,8 @@ async function submitTip() {
         });
         var data = await resp.json();
         if (!resp.ok) {
-            errEl.textContent = data.error || 'Failed to send tip';
+            var errMsg = data.error || (data.detail ? (typeof data.detail === 'string' ? data.detail : 'Validation error') : 'Failed to send tip');
+            errEl.textContent = errMsg;
             errEl.style.display = 'block';
             return;
         }
