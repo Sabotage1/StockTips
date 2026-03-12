@@ -2955,6 +2955,7 @@ async function submitTip() {
         if (_chatFriendId && parseInt(friendId) === _chatFriendId) loadChatMessages();
         if (_socialCurrentTab === 'tips') loadTips();
     } catch (e) {
+        console.error('submitTip error:', e, e.stack);
         errEl.textContent = 'Error: ' + e.message;
         errEl.style.display = 'block';
     }

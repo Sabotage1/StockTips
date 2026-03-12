@@ -1471,53 +1471,58 @@ async def api_messages_mark_read(request: Request, friend_id: int):
 @app.post("/api/tips/{friend_id}")
 async def api_tip_send(request: Request, friend_id: int):
     """Send a stock tip to a friend."""
-    ensure_db()
-    user_id = _get_current_user_id(request)
-    if not user_id:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    if not are_friends(user_id, friend_id):
-        return JSONResponse({"error": "Not friends"}, status_code=403)
-    body = await request.json()
-    ticker = str(body.get("ticker", "")).strip().upper()
-    if not ticker:
-        return JSONResponse({"error": "Ticker is required"}, status_code=400)
-    breakout_price = None
-    if body.get("breakout_price"):
-        try:
-            breakout_price = float(body["breakout_price"])
-        except (ValueError, TypeError):
-            pass
-    stop_loss = None
-    if body.get("stop_loss"):
-        try:
-            stop_loss = float(body["stop_loss"])
-        except (ValueError, TypeError):
-            pass
-    message = str(body.get("message", ""))
-    share_token = body.get("analysis_share_token") or None
-    expiry_hours = None
-    if body.get("expiry_hours"):
-        try:
-            expiry_hours = int(body["expiry_hours"])
-        except (ValueError, TypeError):
-            pass
-    tip = create_tip(user_id, friend_id, ticker, breakout_price, stop_loss, message, share_token, expiry_hours)
-    session = _get_session(request)
-    sender_name = session["user"] if session else ""
-    create_notification(
-        friend_id, "tip",
-        "{} sent you a tip: {}".format(sender_name, ticker),
-        body=message[:100],
-        reference_id=tip.id,
-    )
-    return JSONResponse({
-        "ok": True,
-        "tip": {
-            "id": tip.id,
-            "ticker": tip.ticker,
-            "created_at": tip.created_at.isoformat() if tip.created_at else "",
-        },
-    })
+    try:
+        ensure_db()
+        user_id = _get_current_user_id(request)
+        if not user_id:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        if not are_friends(user_id, friend_id):
+            return JSONResponse({"error": "Not friends"}, status_code=403)
+        body = await request.json()
+        ticker = str(body.get("ticker", "")).strip().upper()
+        if not ticker:
+            return JSONResponse({"error": "Ticker is required"}, status_code=400)
+        breakout_price = None
+        if body.get("breakout_price"):
+            try:
+                breakout_price = float(body["breakout_price"])
+            except (ValueError, TypeError):
+                pass
+        stop_loss = None
+        if body.get("stop_loss"):
+            try:
+                stop_loss = float(body["stop_loss"])
+            except (ValueError, TypeError):
+                pass
+        message = str(body.get("message", ""))
+        share_token = body.get("analysis_share_token") or None
+        expiry_hours = None
+        if body.get("expiry_hours"):
+            try:
+                expiry_hours = int(body["expiry_hours"])
+            except (ValueError, TypeError):
+                pass
+        tip = create_tip(user_id, friend_id, ticker, breakout_price, stop_loss, message, share_token, expiry_hours)
+        session = _get_session(request)
+        sender_name = session["user"] if session else ""
+        create_notification(
+            friend_id, "tip",
+            "{} sent you a tip: {}".format(sender_name, ticker),
+            body=message[:100],
+            reference_id=tip.id,
+        )
+        return JSONResponse({
+            "ok": True,
+            "tip": {
+                "id": tip.id,
+                "ticker": tip.ticker,
+                "created_at": tip.created_at.isoformat() if tip.created_at else "",
+            },
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/tips")
