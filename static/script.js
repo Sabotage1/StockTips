@@ -1149,7 +1149,7 @@ function renderPortfolioTable(items) {
             '<td data-col="day_pnl" style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlColor + ';font-weight:600">' + dayPnl + '</td>' +
             '<td data-col="day_pnl_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayPnlPctAvgColor + ';font-weight:600">' + dayPnlPctAvg + '</td>' +
             '<td data-col="day_pct" style="font-family:\'JetBrains Mono\',monospace;color:' + dayColor + ';font-weight:600">' + (dayChg || 'N/A') + '</td>' +
-            '<td data-col="signals" style="max-width:200px">' + signalsHtml + '</td>' +
+            '<td data-col="signals">' + signalsHtml + '</td>' +
             '<td data-col="actions" style="white-space:nowrap">' +
                 '<button class="btn-pf-buy" onclick="event.stopPropagation();openBuySharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ')" title="Buy More">+Buy</button> ' +
                 '<button class="btn-pf-sell" onclick="event.stopPropagation();openSellSharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ',' + (it.current_price || 0) + ')" title="Sell">-Sell</button> ' +

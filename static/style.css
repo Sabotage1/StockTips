@@ -1124,6 +1124,14 @@ body {
     background: linear-gradient(to right, rgba(0,0,0,0.15), transparent);
     pointer-events: none;
 }
+#portfolioTable th[data-col="signals"],
+#portfolioTable td[data-col="signals"] {
+    min-width: 120px;
+}
+#portfolioTable th[data-col="actions"],
+#portfolioTable td[data-col="actions"] {
+    white-space: nowrap;
+}
 #portfolioTable th:not([data-col="ticker"]) {
     background: var(--surface2-solid);
 }
