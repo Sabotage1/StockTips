@@ -2373,6 +2373,15 @@ function stopNotificationPolling() {
     if (_notifPollTimer) { clearInterval(_notifPollTimer); _notifPollTimer = null; }
 }
 
+function refreshChatBadge() {
+    fetch(API + '/api/unread-chat-count').then(function(r) { return r.json(); }).then(function(d) {
+        var b = document.getElementById('floatingBadge');
+        if (!b) return;
+        if (d.count > 0) { b.textContent = d.count; b.style.display = ''; }
+        else b.style.display = 'none';
+    }).catch(function() {});
+}
+
 async function pollNotifications() {
     try {
         var resp = await fetch(API + '/api/notifications/count');
@@ -2487,9 +2496,7 @@ async function loadSocialPanel() {
 function markAllNotificationsRead() {
     fetch(API + '/api/notifications/read-all', { method: 'POST' }).then(function() {
         var badge = document.getElementById('socialBadge');
-        var floatBadge = document.getElementById('floatingBadge');
         if (badge) badge.style.display = 'none';
-        if (floatBadge) floatBadge.style.display = 'none';
     }).catch(function() {});
 }
 
@@ -2702,7 +2709,7 @@ function openChat(friendId, friendName) {
     loadChatMessages();
     startChatPolling();
     // Mark messages as read
-    fetch(API + '/api/messages/read/' + friendId, { method: 'POST' });
+    fetch(API + '/api/messages/read/' + friendId, { method: 'POST' }).then(function() { refreshChatBadge(); });
 }
 
 function closeChatView() {
@@ -2805,7 +2812,7 @@ function startChatPolling() {
     _chatPollTimer = setInterval(function() {
         if (_chatFriendId) {
             loadChatMessages();
-            fetch(API + '/api/messages/read/' + _chatFriendId, { method: 'POST' });
+            fetch(API + '/api/messages/read/' + _chatFriendId, { method: 'POST' }).then(function() { refreshChatBadge(); });
         }
     }, 5000);
 }
@@ -2869,7 +2876,7 @@ async function viewTipDetail(tipId) {
         var resp = await fetch(API + '/api/tips/' + tipId);
         var tip = await resp.json();
         // Mark as read
-        fetch(API + '/api/tips/' + tipId + '/read', { method: 'POST' });
+        fetch(API + '/api/tips/' + tipId + '/read', { method: 'POST' }).then(function() { refreshChatBadge(); });
         var details = '';
         if (tip.breakout_price) details += '<div class="target-row"><span class="target-label">Breakout Price</span><span class="target-val">$' + tip.breakout_price.toFixed(2) + '</span></div>';
         if (tip.stop_loss) details += '<div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">$' + tip.stop_loss.toFixed(2) + '</span></div>';
@@ -3160,7 +3167,7 @@ function openSidebarChat(friendId, friendName) {
     document.getElementById('sidebarChatWithName').textContent = friendName;
     loadSidebarChatMessages();
     startSidebarChatPolling();
-    fetch(API + '/api/messages/read/' + friendId, { method: 'POST' });
+    fetch(API + '/api/messages/read/' + friendId, { method: 'POST' }).then(function() { refreshChatBadge(); });
 }
 
 function closeSidebarChatView() {
@@ -3248,7 +3255,7 @@ function startSidebarChatPolling() {
     _sidebarChatPollTimer = setInterval(function() {
         if (_sidebarChatFriendId) {
             loadSidebarChatMessages();
-            fetch(API + '/api/messages/read/' + _sidebarChatFriendId, { method: 'POST' });
+            fetch(API + '/api/messages/read/' + _sidebarChatFriendId, { method: 'POST' }).then(function() { refreshChatBadge(); });
         }
     }, 5000);
 }
