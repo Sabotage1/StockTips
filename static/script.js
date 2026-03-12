@@ -2828,14 +2828,16 @@ async function loadTips() {
             var expiryStr = formatExpiry(t);
             var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
             return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
-                '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' +
                 '<div class="tip-card-header">' +
                     '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
-                    '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
                 '</div>' +
                 (details ? '<div class="tip-card-details">' + details + '</div>' : '') +
                 (t.message ? '<div class="tip-card-msg">' + escapeHtml(t.message).substring(0, 120) + '</div>' : '') +
                 (t.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + t.analysis_share_token + '" target="_blank" onclick="event.stopPropagation()">View Analysis</a>' : '') +
+                '<div class="tip-card-footer">' +
+                    '<button class="tip-card-delete-btn" onclick="event.stopPropagation();deleteTip(' + t.id + ')">Delete</button>' +
+                    '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
+                '</div>' +
                 '</div>';
         }).join('');
     } catch (e) { console.error('Tips error:', e); }
@@ -3293,14 +3295,16 @@ async function loadSidebarTips() {
             var expiryStr = formatExpiry(t);
             var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
             return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
-                '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' +
                 '<div class="tip-card-header">' +
                     '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
-                    '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
                 '</div>' +
                 (details ? '<div class="tip-card-details">' + details + '</div>' : '') +
                 (t.message ? '<div class="tip-card-msg">' + escapeHtml(t.message).substring(0, 120) + '</div>' : '') +
                 (t.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + t.analysis_share_token + '" target="_blank" onclick="event.stopPropagation()">View Analysis</a>' : '') +
+                '<div class="tip-card-footer">' +
+                    '<button class="tip-card-delete-btn" onclick="event.stopPropagation();deleteTip(' + t.id + ')">Delete</button>' +
+                    '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
+                '</div>' +
                 '</div>';
         }).join('');
     } catch (e) { console.error('Sidebar tips error:', e); }

@@ -1548,9 +1548,6 @@ body {
 }
 .tip-card:hover { border-color: var(--green); }
 .tip-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     margin-bottom: 8px;
 }
 .tip-card-ticker {
@@ -1614,24 +1611,25 @@ body {
 .chat-bubble:hover .chat-delete-btn { opacity: 0.7; }
 .chat-delete-btn:hover { opacity: 1 !important; color: var(--red); }
 
-.tip-card-delete {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background: none;
-    border: none;
-    color: var(--text3);
-    font-size: 18px;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s;
-    z-index: 2;
-    line-height: 1;
-    padding: 2px 4px;
+.tip-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
 }
-.tip-card { position: relative; }
-.tip-card:hover .tip-card-delete { opacity: 0.7; }
-.tip-card-delete:hover { opacity: 1 !important; color: var(--red); }
+.tip-card-delete-btn {
+    background: none;
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.tip-card-delete-btn:hover { background: var(--red); color: #fff; }
 
 /* === Expired Tips === */
 .tip-expired { opacity: 0.5; }
