@@ -46,6 +46,18 @@ class BlockedUser(Base):
     blocked_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
+_RESERVED_CODES = {"1337", "5555"}
+
+
+def _generate_user_code():
+    """Generate a unique random 4-digit user code, avoiding reserved codes."""
+    import random
+    code = str(random.randint(1000, 9999))
+    while code in _RESERVED_CODES:
+        code = str(random.randint(1000, 9999))
+    return code
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -53,6 +65,7 @@ class User(Base):
     username = Column(String(100), unique=True, index=True, nullable=False)
     password_hash = Column(String(200), nullable=False)
     role = Column(String(20), default="viewer")  # "admin" or "viewer"
+    user_code = Column(String(4), unique=True, index=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -127,6 +140,7 @@ def _migrate_add_columns():
             ("ticker_analyses", "share_token", "VARCHAR(32)"),
             ("ticker_analyses", "web_user", "VARCHAR(100) DEFAULT ''"),
             ("portfolio_items", "sort_order", "INTEGER DEFAULT 0"),
+            ("users", "user_code", "VARCHAR(5)"),
         ]
         for table, col, col_type in migrations:
             try:
@@ -146,6 +160,30 @@ def _migrate_add_columns():
             for row in rows:
                 db.execute(text("UPDATE ticker_analyses SET share_token = :token WHERE id = :id"),
                            {"token": uuid.uuid4().hex, "id": row[0]})
+            if rows:
+                db.commit()
+        except Exception:
+            db.rollback()
+        # Backfill user_code for existing users that don't have one
+        try:
+            rows = db.execute(text("SELECT id, username FROM users WHERE user_code IS NULL OR user_code = ''")).fetchall()
+            existing_codes = set()
+            if rows:
+                existing = db.execute(text("SELECT user_code FROM users WHERE user_code IS NOT NULL AND user_code != ''")).fetchall()
+                existing_codes = {r[0] for r in existing}
+            # Hardcoded codes for founding users
+            _hardcoded = {"sabotage": "1337", "adam": "5555"}
+            for row in rows:
+                uid, uname = row[0], row[1].lower()
+                if uname in _hardcoded:
+                    code = _hardcoded[uname]
+                else:
+                    code = _generate_user_code()
+                    while code in existing_codes:
+                        code = _generate_user_code()
+                existing_codes.add(code)
+                db.execute(text("UPDATE users SET user_code = :code WHERE id = :id"),
+                           {"code": code, "id": uid})
             if rows:
                 db.commit()
         except Exception:
@@ -429,7 +467,13 @@ def create_user(username: str, password_hash: str, role: str = "viewer") -> User
         existing = db.query(User).filter(User.username.ilike(username)).first()
         if existing:
             raise ValueError("Username already exists")
-        user = User(username=username, password_hash=password_hash, role=role)
+        # Generate unique 4-digit user code
+        existing_codes = {u.user_code for u in db.query(User).filter(User.user_code.isnot(None)).all()}
+        existing_codes.update(_RESERVED_CODES)
+        code = _generate_user_code()
+        while code in existing_codes:
+            code = _generate_user_code()
+        user = User(username=username, password_hash=password_hash, role=role, user_code=code)
         db.add(user)
         db.commit()
         db.refresh(user)

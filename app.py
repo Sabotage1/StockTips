@@ -202,7 +202,7 @@ async def api_me(request: Request):
     if not user:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     settings = get_user_settings(user.id)
-    return JSONResponse({"username": user.username, "role": user.role, "settings": settings})
+    return JSONResponse({"username": user.username, "role": user.role, "user_code": user.user_code or "", "settings": settings})
 
 
 @app.post("/webhook/telegram")
@@ -244,11 +244,13 @@ async def index(request: Request):
     ensure_db()
     session = _get_session(request)
     user_role = ""
+    user_code = ""
     if session:
         user = get_user_by_username(session["user"])
         if user:
             user_role = user.role
-    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role})
+            user_code = user.user_code or ""
+    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role, "user_code": user_code})
 
 
 @app.post("/api/analyze")
@@ -687,6 +689,7 @@ async def api_list_users(request: Request):
             "id": u.id,
             "username": u.username,
             "role": u.role,
+            "user_code": u.user_code or "",
             "created_at": u.created_at.isoformat() if u.created_at else "",
         }
         for u in users
@@ -720,6 +723,7 @@ async def api_create_user(request: Request):
                 "id": user.id,
                 "username": user.username,
                 "role": user.role,
+                "user_code": user.user_code or "",
                 "created_at": user.created_at.isoformat() if user.created_at else "",
             },
         })

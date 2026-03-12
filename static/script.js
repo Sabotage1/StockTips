@@ -741,7 +741,7 @@ async function loadUsers() {
         if (!resp.ok) return;
         const users = await resp.json();
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No users</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No users</td></tr>';
             return;
         }
         tbody.innerHTML = users.map(u => {
@@ -751,6 +751,7 @@ async function loadUsers() {
                 `<button class="btn-delete-row" onclick="deleteUserAccount(${u.id}, '${u.username.replace(/'/g, "\\'")}')" title="Delete">&times;</button>`;
             return `<tr>
                 <td><strong>${u.username}</strong></td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--accent2);font-size:12px">${u.user_code || '-'}</td>
                 <td><span class="badge ${roleCls}" style="font-size:10px;padding:3px 8px">${u.role}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td>${deleteBtn}</td>
