@@ -902,6 +902,77 @@ function renderPortfolioPieChart(items) {
             '<span class="pie-legend-pct">' + pct + '%</span>' +
             '</div>';
     }).join('');
+
+    renderDiversityEval(valid, total);
+}
+
+function renderDiversityEval(items, total) {
+    var el = document.getElementById('diversityEval');
+    if (!el) return;
+    if (!items.length) { el.innerHTML = ''; return; }
+
+    // Compute HHI (Herfindahl-Hirschman Index) — sum of squared weight fractions
+    var hhi = 0;
+    var maxPct = 0;
+    var maxTicker = '';
+    items.forEach(function(it) {
+        var w = it.market_value / total;
+        hhi += w * w;
+        var pct = w * 100;
+        if (pct > maxPct) { maxPct = pct; maxTicker = it.ticker; }
+    });
+
+    // Normalize HHI to 0-100 score: 1/n (perfect) to 1.0 (single stock)
+    // Diversity score: 100 = perfectly diversified, 0 = single stock
+    var minHhi = 1 / items.length;
+    var score;
+    if (items.length <= 1) {
+        score = 0;
+    } else {
+        score = Math.round(Math.max(0, Math.min(100, (1 - hhi) / (1 - minHhi) * 100)));
+    }
+
+    var grade, gradeClass, tips = [];
+
+    if (score >= 80) {
+        grade = 'Excellent';
+        gradeClass = 'div-excellent';
+    } else if (score >= 60) {
+        grade = 'Good';
+        gradeClass = 'div-good';
+    } else if (score >= 40) {
+        grade = 'Fair';
+        gradeClass = 'div-fair';
+    } else {
+        grade = 'Poor';
+        gradeClass = 'div-poor';
+    }
+
+    // Build recommendations
+    if (items.length < 5) {
+        tips.push('Consider adding more positions (aim for 5-15 stocks)');
+    }
+    if (maxPct > 30) {
+        tips.push(maxTicker + ' is ' + maxPct.toFixed(0) + '% of portfolio -- consider trimming below 30%');
+    } else if (maxPct > 20 && items.length >= 5) {
+        tips.push(maxTicker + ' at ' + maxPct.toFixed(0) + '% is on the heavy side');
+    }
+    if (items.length > 20) {
+        tips.push('Over-diversification can dilute returns -- consider consolidating');
+    }
+
+    var tipsHtml = tips.length
+        ? '<div class="div-tips">' + tips.map(function(t) { return '<span class="div-tip">' + t + '</span>'; }).join('') + '</div>'
+        : '';
+
+    el.innerHTML =
+        '<div class="div-header">' +
+            '<span class="div-label">Diversity</span>' +
+            '<span class="div-grade ' + gradeClass + '">' + grade + '</span>' +
+            '<span class="div-score">' + score + '/100</span>' +
+        '</div>' +
+        '<div class="div-bar-track"><div class="div-bar-fill ' + gradeClass + '" style="width:' + score + '%"></div></div>' +
+        tipsHtml;
 }
 
 function startPortfolioRefresh() {
