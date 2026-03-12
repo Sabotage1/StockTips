@@ -1114,6 +1114,10 @@ body {
 #portfolioTable tbody tr:hover td[data-col="ticker"] {
     background: var(--surface2);
 }
+#portfolioTable th:not([data-col="ticker"]) {
+    position: relative;
+    z-index: 0;
+}
 #portfolioTable tbody tr td:not([data-col="ticker"]) {
     position: relative;
     z-index: 0;
