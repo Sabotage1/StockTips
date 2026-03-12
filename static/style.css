@@ -1117,6 +1117,10 @@ body {
 #portfolioTable tbody tr td:not([data-col="ticker"]) {
     position: relative;
     z-index: 0;
+    background: var(--surface-solid);
+}
+#portfolioTable tbody tr:hover td:not([data-col="ticker"]) {
+    background: var(--surface2);
 }
 
 /* === Drag and Drop === */
