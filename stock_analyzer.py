@@ -426,19 +426,24 @@ def get_quick_signals(ticker, purchase_price, stop_loss=None):
 
 
 def get_quick_signals_batch(items):
-    """Fetch quick signals for a list of portfolio items.
+    """Fetch quick signals for a list of portfolio items in parallel.
 
     items: list of dicts with 'ticker', 'purchase_price', and optional 'stop_loss'.
     Returns dict keyed by ticker.
     """
-    results = {}
-    for item in items:
-        ticker = item["ticker"]
-        results[ticker] = get_quick_signals(
-            ticker,
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _fetch_one(item):
+        return item["ticker"], get_quick_signals(
+            item["ticker"],
             item["purchase_price"],
             stop_loss=item.get("stop_loss"),
         )
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(len(items), 10)) as pool:
+        for ticker, signals in pool.map(_fetch_one, items):
+            results[ticker] = signals
     return results
 
 
