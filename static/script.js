@@ -109,6 +109,23 @@ async function analyze() {
     }
 }
 
+function goToAnalyze(ticker, purchasePrice) {
+    // Switch to analyze panel
+    document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    var analyzeBtn = document.querySelector('.nav-btn[data-panel="analyze"]');
+    if (analyzeBtn) analyzeBtn.classList.add('active');
+    document.getElementById('panel-analyze').classList.add('active');
+    currentPanel = 'analyze';
+    stopPortfolioRefresh();
+
+    // Fill ticker and purchase price, then trigger analysis
+    tickerInput.value = ticker;
+    var priceInput = document.getElementById('purchasePriceInput');
+    if (priceInput && purchasePrice) priceInput.value = purchasePrice;
+    analyze();
+}
+
 function copyShareLink(token, btn) {
     const url = window.location.origin + '/share/' + token;
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1062,7 +1079,7 @@ function renderPortfolioTable(items) {
         }
 
         return '<tr data-item-id="' + it.id + '">' +
-            '<td data-col="ticker"><a href="#" onclick="openStockDetail(' + it.id + ');return false" style="text-decoration:none;color:inherit"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
+            '<td data-col="ticker"><a href="#" onclick="event.stopPropagation();goToAnalyze(\'' + it.ticker + '\',' + it.purchase_price + ');return false" style="text-decoration:none;color:inherit;cursor:pointer"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
                 (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</a></td>' +
             '<td data-col="shares" style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
             '<td data-col="avg_cost" style="font-family:\'JetBrains Mono\',monospace">$' + it.purchase_price.toFixed(2) + '</td>' +
