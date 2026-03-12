@@ -1316,7 +1316,7 @@ body {
     transition: all 0.2s;
 }
 .btn-friend-msg:hover { color: var(--accent2); border-color: var(--accent); }
-.btn-friend-tip:hover { color: var(--green); border-color: var(--green); }
+.btn-friend-tip:hover { color: var(--blue); border-color: var(--blue); }
 .btn-friend-remove {
     background: none;
     border: none;
@@ -1760,14 +1760,14 @@ body {
 
 /* Portfolio tip button */
 .btn-pf-tip {
-    background: var(--green-bg);
-    color: var(--green);
-    border: 1px solid rgba(52,211,153,0.25);
-    padding: 3px 8px;
+    background: rgba(99,140,255,0.1);
+    color: var(--blue);
+    border: 1px solid rgba(99,140,255,0.25);
+    padding: 4px 10px;
     border-radius: 6px;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
 }
-.btn-pf-tip:hover { background: rgba(52,211,153,0.2); }
+.btn-pf-tip:hover { background: rgba(99,140,255,0.2); }
