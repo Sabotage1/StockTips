@@ -39,7 +39,7 @@ document.querySelectorAll('.nav-btn[data-panel]').forEach(btn => {
         if (currentPanel === 'usage') loadUsage();
         if (currentPanel === 'users') loadUsers();
         if (currentPanel === 'portfolio') loadPortfolio();
-        if (currentPanel === 'social') loadSocialPanel();
+        if (currentPanel === 'social') { loadSocialPanel(); closeChatSidebar(); }
         updateFloatingChatBtn();
     });
 });
@@ -2333,9 +2333,23 @@ function showToast(notif) {
     el.onclick = function() {
         el.classList.add('removing');
         setTimeout(function() { el.remove(); }, 300);
-        if (notif.type === 'message') goToSocialChat();
-        else if (notif.type === 'tip') { goToSocial(); switchSocialTab('tips'); }
-        else { goToSocial(); switchSocialTab('friends'); }
+        if (notif.type === 'message') {
+            if (currentPanel !== 'social') {
+                openChatSidebar();
+            } else {
+                switchSocialTab('chat');
+            }
+        } else if (notif.type === 'tip') {
+            if (currentPanel !== 'social') {
+                goToSocial();
+            }
+            switchSocialTab('tips');
+        } else {
+            if (currentPanel !== 'social') {
+                goToSocial();
+            }
+            switchSocialTab('friends');
+        }
     };
     container.appendChild(el);
     setTimeout(function() {
@@ -2592,11 +2606,19 @@ async function sendChatMessage() {
     } catch (e) { console.error('Send error:', e); }
 }
 
-// Enter to send
+// Enter to send, Escape to close sidebar
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'chatInput') {
-        e.preventDefault();
-        sendChatMessage();
+    if (e.key === 'Enter' && document.activeElement) {
+        if (document.activeElement.id === 'chatInput') {
+            e.preventDefault();
+            sendChatMessage();
+        } else if (document.activeElement.id === 'sidebarChatInput') {
+            e.preventDefault();
+            sendSidebarChatMessage();
+        }
+    }
+    if (e.key === 'Escape' && _sidebarOpen) {
+        closeChatSidebar();
     }
 });
 
@@ -2796,8 +2818,11 @@ function updateFloatingChatBtn() {
 }
 
 function goToSocialChat() {
-    goToSocial();
-    switchSocialTab('chat');
+    if (currentPanel !== 'social') {
+        openChatSidebar();
+    } else {
+        switchSocialTab('chat');
+    }
 }
 
 function goToSocial() {
@@ -2809,6 +2834,165 @@ function goToSocial() {
     currentPanel = 'social';
     stopPortfolioRefresh();
     updateFloatingChatBtn();
+}
+
+// --- Chat Sidebar ---
+
+var _sidebarChatFriendId = null;
+var _sidebarChatFriendName = '';
+var _sidebarChatPollTimer = null;
+var _sidebarOpen = false;
+
+function toggleChatSidebar() {
+    if (_sidebarOpen) {
+        closeChatSidebar();
+    } else {
+        openChatSidebar();
+    }
+}
+
+function openChatSidebar() {
+    _sidebarOpen = true;
+    document.getElementById('chatSidebar').classList.add('open');
+    document.getElementById('chatSidebarOverlay').classList.add('open');
+    loadSidebarConversations();
+}
+
+function closeChatSidebar() {
+    _sidebarOpen = false;
+    document.getElementById('chatSidebar').classList.remove('open');
+    document.getElementById('chatSidebarOverlay').classList.remove('open');
+    stopSidebarChatPolling();
+    _sidebarChatFriendId = null;
+    _sidebarChatFriendName = '';
+    // Reset to conversations view
+    document.getElementById('sidebarChatView').style.display = 'none';
+    document.getElementById('sidebarConversations').style.display = '';
+}
+
+async function loadSidebarConversations() {
+    try {
+        var resp = await fetch(API + '/api/conversations');
+        var convos = await resp.json();
+        var el = document.getElementById('sidebarConvoList');
+        if (!convos.length) {
+            el.innerHTML = '<p style="color:var(--text3);font-size:13px;padding:16px">No conversations yet. Add a friend and start chatting!</p>';
+            return;
+        }
+        el.innerHTML = convos.map(function(c) {
+            var initial = c.username.charAt(0).toUpperCase();
+            var timeStr = c.last_time ? formatTime(c.last_time) : '';
+            return '<div class="convo-item" onclick="openSidebarChat(' + c.user_id + ',\'' + escapeHtml(c.username).replace(/'/g, "\\'") + '\')">' +
+                '<div class="convo-avatar">' + initial + '</div>' +
+                '<div class="convo-info"><div class="convo-name">' + escapeHtml(c.username) + '</div><div class="convo-preview">' + escapeHtml(c.last_message) + '</div></div>' +
+                '<div class="convo-meta"><div class="convo-time">' + timeStr + '</div>' +
+                    (c.unread > 0 ? '<div class="convo-unread">' + c.unread + '</div>' : '') +
+                '</div></div>';
+        }).join('');
+    } catch (e) { console.error('Sidebar conversations error:', e); }
+}
+
+function openSidebarChat(friendId, friendName) {
+    _sidebarChatFriendId = friendId;
+    _sidebarChatFriendName = friendName;
+    document.getElementById('sidebarConversations').style.display = 'none';
+    document.getElementById('sidebarChatView').style.display = '';
+    document.getElementById('sidebarChatWithName').textContent = friendName;
+    loadSidebarChatMessages();
+    startSidebarChatPolling();
+    fetch(API + '/api/messages/read/' + friendId, { method: 'POST' });
+}
+
+function closeSidebarChatView() {
+    _sidebarChatFriendId = null;
+    _sidebarChatFriendName = '';
+    stopSidebarChatPolling();
+    document.getElementById('sidebarChatView').style.display = 'none';
+    document.getElementById('sidebarConversations').style.display = '';
+    loadSidebarConversations();
+}
+
+async function loadSidebarChatMessages() {
+    if (!_sidebarChatFriendId) return;
+    try {
+        var resp = await fetch(API + '/api/messages/' + _sidebarChatFriendId);
+        var timeline = await resp.json();
+        var el = document.getElementById('sidebarChatMessages');
+        if (!timeline.length) {
+            el.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:40px">No messages yet. Say hello!</p>';
+            return;
+        }
+        el.innerHTML = timeline.map(function(item) {
+            if (item.type === 'tip') {
+                return renderSidebarTipBubble(item);
+            }
+            var isSent = _currentUserId ? item.sender_id === _currentUserId : item.sender_id !== _sidebarChatFriendId;
+            var timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            return '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+                escapeHtml(item.content) +
+                '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+        }).join('');
+        el.scrollTop = el.scrollHeight;
+    } catch (e) { console.error('Sidebar chat load error:', e); }
+}
+
+function renderSidebarTipBubble(tip) {
+    var isSent = _currentUserId ? tip.sender_id === _currentUserId : tip.sender_id !== _sidebarChatFriendId;
+    var timeStr = tip.created_at ? new Date(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    var details = '';
+    if (tip.breakout_price) details += 'Breakout: $' + tip.breakout_price.toFixed(2) + ' ';
+    if (tip.stop_loss) details += 'Stop: $' + tip.stop_loss.toFixed(2);
+    var linkHtml = tip.analysis_share_token ? '<a class="tip-bubble-link" href="/share/' + tip.analysis_share_token + '" target="_blank">View Analysis</a>' : '';
+    return '<div class="chat-bubble tip-bubble ' + (isSent ? 'sent' : 'received') + '">' +
+        '<div class="tip-bubble-header">Stock Tip</div>' +
+        '<div class="tip-bubble-ticker">' + escapeHtml(tip.ticker) + '</div>' +
+        (details ? '<div class="tip-bubble-detail">' + details + '</div>' : '') +
+        (tip.message ? '<div style="margin-top:4px;font-size:13px">' + escapeHtml(tip.message) + '</div>' : '') +
+        linkHtml +
+        '<div class="chat-bubble-time">' + timeStr + '</div></div>';
+}
+
+async function sendSidebarChatMessage() {
+    var input = document.getElementById('sidebarChatInput');
+    var content = input.value.trim();
+    if (!content || !_sidebarChatFriendId) return;
+    input.value = '';
+    try {
+        await fetch(API + '/api/messages/' + _sidebarChatFriendId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content }),
+        });
+        loadSidebarChatMessages();
+    } catch (e) { console.error('Sidebar send error:', e); }
+}
+
+function startSidebarChatPolling() {
+    stopSidebarChatPolling();
+    _sidebarChatPollTimer = setInterval(function() {
+        if (_sidebarChatFriendId) {
+            loadSidebarChatMessages();
+            fetch(API + '/api/messages/read/' + _sidebarChatFriendId, { method: 'POST' });
+        }
+    }, 5000);
+}
+
+function stopSidebarChatPolling() {
+    if (_sidebarChatPollTimer) { clearInterval(_sidebarChatPollTimer); _sidebarChatPollTimer = null; }
+}
+
+function openTipModalFromSidebarChat() {
+    if (!_sidebarChatFriendId) return;
+    openTipModal(_sidebarChatFriendId, _sidebarChatFriendName);
+}
+
+// Open sidebar chat directly to a specific friend
+function openSidebarChatDirect(friendId, friendName) {
+    openChatSidebar();
+    // Small delay to let sidebar open, then open the chat
+    setTimeout(function() {
+        openSidebarChat(friendId, friendName);
+    }, 50);
 }
 
 // --- Init Social ---
@@ -2828,6 +3012,7 @@ async function initSocial() {
 window.addEventListener('beforeunload', function() {
     stopNotificationPolling();
     stopChatPolling();
+    stopSidebarChatPolling();
 });
 
 // Start social features after page load
