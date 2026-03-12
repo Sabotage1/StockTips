@@ -221,29 +221,38 @@ async def process_ticker(update: Update, ticker: str, purchase_price=None):
     try:
         result = await analyze_stock(ticker, purchase_price=purchase_price)
 
-        # Always save to history so every telegram search is recorded
         analysis = result["analysis"]
+
+        # Skip saving error results to history
+        _error_markers = ["parsing failed", "error analyzing", "quota exhausted",
+                          "an error occurred", "analysis failed"]
+        _summary_lower = analysis.get("short_summary", "").lower()
+        is_error = analysis.get("confidence") == "LOW" and any(
+            m in _summary_lower for m in _error_markers
+        )
+
         user = update.effective_user
         telegram_user = "{} {}".format(user.first_name or "", user.last_name or "").strip()
         if user.username:
             telegram_user += " (@{})".format(user.username)
         telegram_user_id = str(user.id) if user.id else ""
 
-        save_analysis(
-            ticker=result["ticker"],
-            company_name=result["company_name"],
-            current_price=result.get("current_price"),
-            recommendation=analysis["recommendation"],
-            confidence=analysis["confidence"],
-            short_summary=analysis["short_summary"],
-            full_analysis=analysis.get("full_analysis", ""),
-            news_data=json.dumps(result["news_articles"][:10], default=str),
-            stock_data=json.dumps(result["stock_data"], default=str),
-            analysis_json=json.dumps(analysis, default=str),
-            source="telegram",
-            telegram_user=telegram_user,
-            telegram_user_id=telegram_user_id,
-        )
+        if not is_error:
+            save_analysis(
+                ticker=result["ticker"],
+                company_name=result["company_name"],
+                current_price=result.get("current_price"),
+                recommendation=analysis["recommendation"],
+                confidence=analysis["confidence"],
+                short_summary=analysis["short_summary"],
+                full_analysis=analysis.get("full_analysis", ""),
+                news_data=json.dumps(result["news_articles"][:10], default=str),
+                stock_data=json.dumps(result["stock_data"], default=str),
+                analysis_json=json.dumps(analysis, default=str),
+                source="telegram",
+                telegram_user=telegram_user,
+                telegram_user_id=telegram_user_id,
+            )
 
         # Attach purchase price so the formatter can show P&L
         if purchase_price is not None:
