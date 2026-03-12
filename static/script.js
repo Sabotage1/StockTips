@@ -1136,9 +1136,9 @@ function renderPortfolioTable(items) {
             }).join('');
         }
 
-        return '<tr data-item-id="' + it.id + '">' +
-            '<td data-col="ticker"><a href="#" onclick="event.stopPropagation();goToAnalyze(\'' + it.ticker + '\',' + it.purchase_price + ');return false" style="text-decoration:none;color:inherit;cursor:pointer"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
-                (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</a></td>' +
+        return '<tr data-item-id="' + it.id + '" onclick="openStockDetail(' + it.id + ')" style="cursor:pointer">' +
+            '<td data-col="ticker"><strong style="font-family:\'JetBrains Mono\',monospace;color:var(--accent2)">' + it.ticker + '</strong>' +
+                (it.company_name ? '<br><span style="font-size:11px;color:var(--text3)">' + it.company_name + '</span>' : '') + '</td>' +
             '<td data-col="shares" style="font-family:\'JetBrains Mono\',monospace">' + it.shares + '</td>' +
             '<td data-col="avg_cost" style="font-family:\'JetBrains Mono\',monospace">$' + it.purchase_price.toFixed(2) + '</td>' +
             '<td data-col="price" style="font-family:\'JetBrains Mono\',monospace">' + price + '</td>' +
@@ -1153,9 +1153,9 @@ function renderPortfolioTable(items) {
             '<td data-col="actions" style="white-space:nowrap">' +
                 '<button class="btn-pf-buy" onclick="event.stopPropagation();openBuySharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ')" title="Buy More">+Buy</button> ' +
                 '<button class="btn-pf-sell" onclick="event.stopPropagation();openSellSharesModal(' + it.id + ',\'' + it.ticker + '\',' + it.shares + ',' + it.purchase_price + ',' + (it.current_price || 0) + ')" title="Sell">-Sell</button> ' +
-                '<button class="btn-pf-edit" onclick="openEditPortfolioItem(' + it.id + ',' + it.shares + ',' + it.purchase_price + ',' + (it.stop_loss || 0) + ',\'' + it.ticker + '\')" title="Edit">Edit</button> ' +
-                '<button class="btn-pf-analyze" onclick="analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
-                '<button class="btn-delete-row" onclick="removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
+                '<button class="btn-pf-edit" onclick="event.stopPropagation();openEditPortfolioItem(' + it.id + ',' + it.shares + ',' + it.purchase_price + ',' + (it.stop_loss || 0) + ',\'' + it.ticker + '\')" title="Edit">Edit</button> ' +
+                '<button class="btn-pf-analyze" onclick="event.stopPropagation();analyzePortfolioItem(' + it.id + ',\'' + it.ticker + '\')">Analyze</button> ' +
+                '<button class="btn-delete-row" onclick="event.stopPropagation();removePortfolioItem(' + it.id + ',\'' + it.ticker + '\')" title="Remove">&times;</button></td>' +
             '</tr>';
     }).join('');
 }
