@@ -739,7 +739,7 @@ async function fetchCurrentUser() {
         var userName = data.display_name || data.username;
         if (userName) {
             var greetings = ['Hello', 'Hey', 'Welcome back', 'What\'s up', 'Good to see you', 'Howdy', 'Yo'];
-            var hour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem' }), 10);
+            var hour = new Date().getHours();
             if (hour < 12) greetings.push('Good morning');
             else if (hour < 18) greetings.push('Good afternoon');
             else greetings.push('Good evening');
