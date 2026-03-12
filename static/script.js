@@ -1800,6 +1800,7 @@ async function openStockDetail(itemId) {
     var detailContent = document.getElementById('stockDetailContent');
     var statusBar = document.querySelector('.portfolio-status-bar');
     var summary = document.getElementById('portfolioSummary');
+    var pieWrap = document.getElementById('portfolioPieWrap');
     var addForm = document.querySelector('.portfolio-add-form');
     var tableWrap = document.getElementById('portfolioTableWrap');
 
@@ -1808,6 +1809,7 @@ async function openStockDetail(itemId) {
     detailView.style.display = 'block';
     if (statusBar) statusBar.style.display = 'none';
     if (summary) summary.style.display = 'none';
+    if (pieWrap) pieWrap.style.display = 'none';
     if (addForm) addForm.style.display = 'none';
     if (tableWrap) tableWrap.style.display = 'none';
 
@@ -1826,12 +1828,14 @@ function closeStockDetail() {
     var detailView = document.getElementById('portfolio-stock-detail');
     var statusBar = document.querySelector('.portfolio-status-bar');
     var summary = document.getElementById('portfolioSummary');
+    var pieWrap = document.getElementById('portfolioPieWrap');
     var addForm = document.querySelector('.portfolio-add-form');
     var tableWrap = document.getElementById('portfolioTableWrap');
 
     detailView.style.display = 'none';
     if (statusBar) statusBar.style.display = '';
     if (summary) summary.style.display = '';
+    if (pieWrap) pieWrap.style.display = '';
     if (addForm) addForm.style.display = '';
     if (tableWrap) tableWrap.style.display = '';
 }
