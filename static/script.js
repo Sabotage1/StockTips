@@ -1241,8 +1241,8 @@ var COLUMN_LABELS = {
     day_pnl: 'Day P&L', day_pnl_pct: 'Day P&L %', day_pct: 'Day %', signals: 'Signals', actions: 'Actions'
 };
 var CARD_LABELS = {
-    total_value: 'Total Value', total_cost: 'Total Cost', total_pnl: 'Total P&L',
-    total_return: 'Return', day_pnl: 'Day P&L', realized_pnl: 'Realized P&L'
+    total_value: 'Total Value', total_cost: 'Total Cost', total_pnl: 'Unrealized P&L',
+    total_return: 'Unrealized P&L %', day_pnl: 'Day P&L', realized_pnl: 'Realized P&L'
 };
 
 function toggleSettingsPanel() {
