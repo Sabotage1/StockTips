@@ -2,7 +2,7 @@ import datetime
 import json
 import uuid
 from typing import Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, UniqueConstraint, and_
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, UniqueConstraint, and_, or_ as db_or
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from config import DATABASE_URL
@@ -1644,10 +1644,13 @@ def delete_message(message_id: int, user_id: int) -> bool:
 
 
 def delete_tip(tip_id: int, user_id: int) -> bool:
-    """Delete a tip (sender only)."""
+    """Delete a tip (sender or receiver)."""
     db = SessionLocal()
     try:
-        tip = db.query(Tip).filter(Tip.id == tip_id, Tip.sender_id == user_id).first()
+        tip = db.query(Tip).filter(
+            Tip.id == tip_id,
+            db_or(Tip.sender_id == user_id, Tip.receiver_id == user_id)
+        ).first()
         if not tip:
             return False
         db.delete(tip)

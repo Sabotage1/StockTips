@@ -2827,9 +2827,8 @@ async function loadTips() {
             var expired = isTipExpired(t);
             var expiryStr = formatExpiry(t);
             var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
-            var deleteBtn = (_tipsDirection === 'sent') ? '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' : '';
             return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
-                deleteBtn +
+                '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' +
                 '<div class="tip-card-header">' +
                     '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
                     '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +
@@ -2854,8 +2853,7 @@ async function viewTipDetail(tipId) {
         var expired = isTipExpired(tip);
         var expiryStr = formatExpiry(tip);
         var expiryBadge = expiryStr ? '<span class="badge' + (expired ? ' badge-sell' : ' badge-info') + '" style="font-size:10px">' + expiryStr + '</span>' : '';
-        var isSender = _currentUserId && tip.sender_id === _currentUserId;
-        var deleteHtml = isSender ? '<button class="btn-clear-all" style="margin-top:12px;font-size:12px" onclick="deleteTip(' + tip.id + ');modalOverlay.classList.remove(\'active\')">Delete Tip</button>' : '';
+        var deleteHtml = '<button class="btn-clear-all" style="margin-top:12px;font-size:12px" onclick="deleteTip(' + tip.id + ');modalOverlay.classList.remove(\'active\')">Delete Tip</button>';
         modalContent.innerHTML =
             '<div class="result-hero" style="margin-bottom:0">' +
                 '<div class="result-top"><span class="result-ticker">' + escapeHtml(tip.ticker) + '</span></div>' +
@@ -3107,6 +3105,30 @@ async function loadSidebarConversations() {
     } catch (e) { console.error('Sidebar conversations error:', e); }
 }
 
+async function showNewChatPicker() {
+    try {
+        var resp = await fetch(API + '/api/friends');
+        var friends = await resp.json();
+        if (!friends.length) {
+            alert('Add friends first to start chatting!');
+            return;
+        }
+        var el = document.getElementById('sidebarConvoList');
+        var html = '<div class="new-chat-picker">';
+        html += '<div style="padding:8px 12px;font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:1px">Select a friend</div>';
+        friends.forEach(function(f) {
+            var fn = displayName(f);
+            var initial = fn.charAt(0).toUpperCase();
+            html += '<div class="convo-item" onclick="openSidebarChat(' + f.user_id + ',\'' + escapeHtml(fn).replace(/'/g, "\\'") + '\')">' +
+                '<div class="convo-avatar">' + initial + '</div>' +
+                '<div class="convo-info"><div class="convo-name">' + escapeHtml(fn) + '</div></div></div>';
+        });
+        html += '<div style="padding:8px 12px"><button class="new-chat-cancel-btn" onclick="loadSidebarConversations()">Cancel</button></div>';
+        html += '</div>';
+        el.innerHTML = html;
+    } catch (e) { console.error('New chat picker error:', e); }
+}
+
 function openSidebarChat(friendId, friendName) {
     _sidebarChatFriendId = friendId;
     _sidebarChatFriendName = friendName;
@@ -3270,9 +3292,8 @@ async function loadSidebarTips() {
             var expired = isTipExpired(t);
             var expiryStr = formatExpiry(t);
             var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
-            var deleteBtn = (_sidebarTipsDirection === 'sent') ? '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' : '';
             return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
-                deleteBtn +
+                '<button class="tip-card-delete" onclick="event.stopPropagation();deleteTip(' + t.id + ')" title="Delete">&times;</button>' +
                 '<div class="tip-card-header">' +
                     '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
                     '<span class="tip-card-from">' + label + ' &middot; ' + timeStr + '</span>' +

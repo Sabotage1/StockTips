@@ -1463,6 +1463,33 @@ body {
 .chat-send-btn:hover { opacity: 0.9; }
 
 /* Conversation list items */
+.new-chat-btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+.new-chat-btn:hover { background: rgba(124,108,240,0.1); }
+.new-chat-cancel-btn {
+    width: 100%;
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text3);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.new-chat-cancel-btn:hover { border-color: var(--text2); color: var(--text2); }
 .convo-item {
     display: flex;
     align-items: center;

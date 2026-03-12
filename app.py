@@ -1591,7 +1591,7 @@ async def api_message_delete(request: Request, message_id: int):
 
 @app.delete("/api/tips/{tip_id}")
 async def api_tip_delete(request: Request, tip_id: int):
-    """Delete a sent tip (sender only)."""
+    """Delete a tip (sender or receiver)."""
     ensure_db()
     user_id = _get_current_user_id(request)
     if not user_id:
