@@ -735,6 +735,18 @@ async function fetchCurrentUser() {
         currentUserRole = data.role || 'viewer';
         if (data.user_id) _currentUserId = data.user_id;
         if (data.settings) userSettings = data.settings;
+        // Show greeting
+        var userName = data.display_name || data.username;
+        if (userName) {
+            var greetings = ['Hello', 'Hey', 'Welcome back', 'What\'s up', 'Good to see you', 'Howdy', 'Yo'];
+            var hour = new Date().getHours();
+            if (hour < 12) greetings.push('Good morning');
+            else if (hour < 18) greetings.push('Good afternoon');
+            else greetings.push('Good evening');
+            var pick = greetings[Math.floor(Math.random() * greetings.length)];
+            var greetEl = document.getElementById('greetingLine');
+            if (greetEl) { greetEl.textContent = pick + ', ' + userName; greetEl.style.display = ''; }
+        }
         // Admin nav buttons are now rendered server-side via Jinja2
         // Hide delete buttons for non-admins
         if (currentUserRole !== 'admin') {
