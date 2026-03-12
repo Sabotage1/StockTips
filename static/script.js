@@ -2678,10 +2678,15 @@ async function showNewChatPickerMain() {
                 '<div class="convo-avatar">' + initial + '</div>' +
                 '<div class="convo-info"><div class="convo-name">' + escapeHtml(fn) + '</div></div></div>';
         });
-        html += '<div style="padding:8px 0"><button class="new-chat-cancel-btn" onclick="loadConversations()">Cancel</button></div>';
+        html += '<div style="padding:8px 0"><button class="new-chat-cancel-btn" onclick="cancelNewChatPickerMain()">Cancel</button></div>';
         html += '</div>';
         el.innerHTML = html;
     } catch (e) { console.error('New chat picker error:', e); }
+}
+
+function cancelNewChatPickerMain() {
+    _socialData = null;
+    loadConversations();
 }
 
 function openChat(friendId, friendName) {
