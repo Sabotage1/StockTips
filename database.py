@@ -207,7 +207,7 @@ def _migrate_add_columns():
             ("ticker_analyses", "web_user", "VARCHAR(100) DEFAULT ''"),
             ("portfolio_items", "sort_order", "INTEGER DEFAULT 0"),
             ("users", "user_code", "VARCHAR(5)"),
-            ("tips", "expires_at", "DATETIME"),
+            ("tips", "expires_at", "TIMESTAMP"),
         ]
         for table, col, col_type in migrations:
             try:
