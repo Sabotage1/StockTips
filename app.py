@@ -15,7 +15,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from telegram import Update
 
-from config import HOST, PORT, EXTERNAL_URL, AUTH_SECRET_KEY
+from config import HOST, PORT, EXTERNAL_URL, AUTH_SECRET_KEY, TELEGRAM_WEBHOOK_SECRET
 from database import (
     init_db, save_analysis, get_history, get_analysis_by_id,
     get_analysis_by_share_token, get_unique_tickers, delete_analysis,
@@ -48,6 +48,25 @@ IS_SERVERLESS = bool(os.getenv("VERCEL"))
 
 telegram_app = None
 _db_initialized = False
+
+# --- Rate Limiting ---
+from collections import defaultdict
+_rate_limit_store = defaultdict(list)  # key -> list of timestamps
+
+def _rate_limit(key, max_requests, window_seconds):
+    """Return True if the request should be blocked (rate limit exceeded)."""
+    now = time.time()
+    timestamps = _rate_limit_store[key]
+    # Remove expired entries
+    _rate_limit_store[key] = [t for t in timestamps if now - t < window_seconds]
+    if len(_rate_limit_store[key]) >= max_requests:
+        return True
+    _rate_limit_store[key].append(now)
+    return False
+
+def _get_client_ip(request):
+    """Extract client IP from request."""
+    return request.headers.get("x-forwarded-for", "").split(",")[0].strip() or request.client.host
 
 # --- Authentication ---
 _session_serializer = URLSafeTimedSerializer(AUTH_SECRET_KEY)
@@ -156,6 +175,18 @@ async def auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if EXTERNAL_URL:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """Show the login form."""
@@ -167,6 +198,9 @@ async def login_page(request: Request):
 @app.post("/login")
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     """Validate credentials against DB users and set session cookie."""
+    client_ip = _get_client_ip(request)
+    if _rate_limit("login:{}".format(client_ip), max_requests=5, window_seconds=60):
+        return JSONResponse({"error": "Too many login attempts. Try again later."}, status_code=429)
     ensure_db()
     user = get_user_by_username(username)
     if user:
@@ -180,12 +214,14 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         if valid:
             token = _create_session_token(user.username, user.role)
             response = RedirectResponse(url="/", status_code=302)
+            _secure_cookie = bool(EXTERNAL_URL)  # True in production (HTTPS)
             response.set_cookie(
                 key=SESSION_COOKIE,
                 value=token,
                 max_age=SESSION_MAX_AGE,
                 httponly=True,
                 samesite="lax",
+                secure=_secure_cookie,
             )
             return response
     return JSONResponse({"error": "Invalid username or password"}, status_code=401)
@@ -221,6 +257,10 @@ async def telegram_webhook(request: Request):
     Returns immediately so Telegram doesn't time out, then processes
     the update in a background task (analysis can take 30-60s).
     """
+    # Verify the request comes from Telegram using secret token
+    incoming_secret = request.headers.get("x-telegram-bot-api-secret-token", "")
+    if not incoming_secret or incoming_secret != TELEGRAM_WEBHOOK_SECRET:
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
     ensure_db()
     tg_app = await get_telegram_app()
     if tg_app is None:
@@ -235,15 +275,21 @@ async def telegram_webhook(request: Request):
 
 
 @app.get("/setup-webhook")
-async def setup_webhook():
-    """Set the Telegram webhook to this server's URL. Call once after deploy."""
+async def setup_webhook(request: Request):
+    """Set the Telegram webhook to this server's URL. Admin only. Call once after deploy."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
     if not EXTERNAL_URL:
         return JSONResponse({"error": "EXTERNAL_URL not set"}, status_code=400)
     tg_app = await get_telegram_app()
     if tg_app is None:
         return JSONResponse({"error": "Bot not initialized"}, status_code=503)
     webhook_url = "{}/webhook/telegram".format(EXTERNAL_URL)
-    await tg_app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES)
+    await tg_app.bot.set_webhook(
+        url=webhook_url,
+        allowed_updates=Update.ALL_TYPES,
+        secret_token=TELEGRAM_WEBHOOK_SECRET,
+    )
     return JSONResponse({"ok": True, "webhook_url": webhook_url})
 
 
@@ -267,6 +313,9 @@ async def index(request: Request):
 @app.post("/api/analyze")
 async def api_analyze(request: Request):
     """Analyze a stock ticker via the API."""
+    client_ip = _get_client_ip(request)
+    if _rate_limit("analyze:{}".format(client_ip), max_requests=10, window_seconds=60):
+        return JSONResponse({"error": "Too many requests. Please wait before analyzing again."}, status_code=429)
     ensure_db()
     body = await request.json()
     ticker = body.get("ticker", "").strip().upper()
@@ -363,7 +412,7 @@ async def api_analyze(request: Request):
         })
     except Exception as e:
         logger.error(f"Analysis error for {ticker}: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Analysis failed. Please try again later."}, status_code=500)
 
 
 @app.get("/api/history")
@@ -509,7 +558,7 @@ async def api_chart(request: Request, ticker: str):
         return Response(content=png_bytes, media_type="image/png")
     except Exception as e:
         logger.error("Chart error for {}: {}".format(ticker, e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Could not generate chart."}, status_code=500)
 
 
 @app.get("/share/{token}")
@@ -730,8 +779,12 @@ async def api_create_user(request: Request):
         return JSONResponse({"error": "Username and password are required"}, status_code=400)
     if len(username) > 100:
         return JSONResponse({"error": "Username too long"}, status_code=400)
-    if len(password) < 4:
-        return JSONResponse({"error": "Password must be at least 4 characters"}, status_code=400)
+    if len(password) < 8:
+        return JSONResponse({"error": "Password must be at least 8 characters"}, status_code=400)
+    if not any(c.isupper() for c in password):
+        return JSONResponse({"error": "Password must contain at least one uppercase letter"}, status_code=400)
+    if not any(c.isdigit() for c in password):
+        return JSONResponse({"error": "Password must contain at least one number"}, status_code=400)
     if role not in ("admin", "viewer"):
         role = "viewer"
     try:
@@ -1278,7 +1331,7 @@ async def api_portfolio_analyze(request: Request, item_id: int):
         })
     except Exception as e:
         logger.error("Portfolio analysis error for {}: {}".format(item.ticker, e))
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Portfolio analysis failed. Please try again later."}, status_code=500)
 
 
 # --- Social Init (combined endpoint) ---
@@ -1302,6 +1355,8 @@ async def api_friend_request(request: Request):
     user_id = _get_current_user_id(request)
     if not user_id:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if _rate_limit("friend_req:{}".format(user_id), max_requests=10, window_seconds=60):
+        return JSONResponse({"error": "Too many friend requests. Slow down."}, status_code=429)
     body = await request.json()
     code = str(body.get("user_code", "")).strip()
     if not code:
@@ -1447,10 +1502,14 @@ async def api_messages_send(request: Request, friend_id: int):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     if not are_friends(user_id, friend_id):
         return JSONResponse({"error": "Not friends"}, status_code=403)
+    if _rate_limit("msg:{}".format(user_id), max_requests=30, window_seconds=60):
+        return JSONResponse({"error": "Too many messages. Slow down."}, status_code=429)
     body = await request.json()
     content = str(body.get("content", "")).strip()
     if not content:
         return JSONResponse({"error": "Message cannot be empty"}, status_code=400)
+    if len(content) > 2000:
+        return JSONResponse({"error": "Message too long (max 2000 characters)"}, status_code=400)
     msg = create_message(user_id, friend_id, content)
     sender = get_user_by_id(user_id)
     sender_label = (sender.display_name or sender.username) if sender else ""
@@ -1502,16 +1561,18 @@ async def api_tip_send(request: Request, friend_id: int):
         breakout_price = None
         if body.get("breakout_price"):
             try:
-                breakout_price = float(body["breakout_price"])
+                breakout_price = round(float(body["breakout_price"]), 2)
             except (ValueError, TypeError):
                 pass
         stop_loss = None
         if body.get("stop_loss"):
             try:
-                stop_loss = float(body["stop_loss"])
+                stop_loss = round(float(body["stop_loss"]), 2)
             except (ValueError, TypeError):
                 pass
         message = str(body.get("message", ""))
+        if len(message) > 2000:
+            return JSONResponse({"error": "Tip message too long (max 2000 characters)"}, status_code=400)
         share_token = body.get("analysis_share_token") or None
         expiry_hours = None
         if body.get("expiry_hours"):
@@ -1537,9 +1598,8 @@ async def api_tip_send(request: Request, friend_id: int):
             },
         })
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        logger.error("Tip creation error: {}".format(e))
+        return JSONResponse({"error": "Failed to send tip. Please try again."}, status_code=500)
 
 
 @app.get("/api/tips")

@@ -93,10 +93,10 @@ async def fetch_newsapi(ticker: str, company_name: str = "") -> list[dict]:
         return []
     articles = []
     query = company_name if company_name else ticker
-    url = f"https://newsapi.org/v2/everything?q={query}+stock&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
+    url = f"https://newsapi.org/v2/everything?q={query}+stock&sortBy=publishedAt&pageSize=10"
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url)
+            resp = await client.get(url, headers={"X-Api-Key": NEWS_API_KEY})
             track("newsapi")
             data = resp.json()
             for article in data.get("articles", [])[:10]:

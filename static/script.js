@@ -2,6 +2,23 @@ const API = '';
 let currentPanel = 'analyze';
 let currentUserRole = 'viewer';
 
+// --- XSS Protection ---
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+function sanitizeUrl(url) {
+    if (!url) return '';
+    var s = String(url).trim();
+    if (s.startsWith('http://') || s.startsWith('https://')) return s;
+    return '';
+}
+
 // Portfolio state
 let portfolioRefreshTimer = null;
 let portfolioRefreshCountdown = 60;
@@ -170,14 +187,14 @@ function renderResult(data) {
     // Factors
     let factorsHtml = '';
     if (data.key_factors && data.key_factors.length) {
-        factorsHtml = '<ul>' + data.key_factors.map(f => `<li>${f}</li>`).join('') + '</ul>';
+        factorsHtml = '<ul>' + data.key_factors.map(f => `<li>${escapeHtml(f)}</li>`).join('') + '</ul>';
     }
 
     // Metrics
     let metricsHtml = '';
     if (data.stock_data) {
         const sd = data.stock_data;
-        const fmt = v => typeof v === 'number' ? `$${v.toFixed(2)}` : v;
+        const fmt = v => typeof v === 'number' ? `$${v.toFixed(2)}` : escapeHtml(v);
         const rows = [
             ['P/E', sd.pe_ratio], ['Fwd P/E', sd.forward_pe], ['EPS', sd.eps],
             ['Mkt Cap', sd.market_cap],
@@ -189,7 +206,7 @@ function renderResult(data) {
             ['MA Setup', sd.ma_alignment],
         ].filter(([_, v]) => v != null && v !== '');
         metricsHtml = '<div class="metric-grid">' +
-            rows.map(([l, v]) => `<div><span class="metric-label">${l}</span><span class="metric-val">${v}</span></div>`).join('') +
+            rows.map(([l, v]) => `<div><span class="metric-label">${escapeHtml(l)}</span><span class="metric-val">${escapeHtml(v)}</span></div>`).join('') +
             '</div>';
     }
 
@@ -197,18 +214,18 @@ function renderResult(data) {
     let newsHtml = '<p style="color:var(--text3)">No news found.</p>';
     if (data.news_articles && data.news_articles.length) {
         newsHtml = '<ul class="news-list">' + data.news_articles.slice(0, 8).map(a =>
-            `<li class="news-item"><a href="${a.link}" target="_blank">${a.title}</a><div class="news-source">${a.source} ${a.published ? '&mdash; ' + a.published : ''}</div></li>`
+            `<li class="news-item"><a href="${sanitizeUrl(a.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.title)}</a><div class="news-source">${escapeHtml(a.source)} ${a.published ? '&mdash; ' + escapeHtml(a.published) : ''}</div></li>`
         ).join('') + '</ul>';
     }
 
     const patternHtml = data.chart_pattern && data.chart_pattern !== 'None detected' && data.chart_pattern !== 'N/A'
-        ? `<div class="pattern-banner"><strong>Pattern Detected:</strong> ${data.chart_pattern}</div>` : '';
+        ? `<div class="pattern-banner"><strong>Pattern Detected:</strong> ${escapeHtml(data.chart_pattern)}</div>` : '';
 
     // Trading Setup - Support & Resistance
     let supportHtml = '';
     if (data.support_levels && data.support_levels.length) {
         supportHtml = '<ul class="level-list">' + data.support_levels.map(s =>
-            `<li class="level-item"><span class="level-dot support"></span>${s}</li>`
+            `<li class="level-item"><span class="level-dot support"></span>${escapeHtml(s)}</li>`
         ).join('') + '</ul>';
     } else {
         supportHtml = '<p style="color:var(--text3);font-size:13px">No key supports identified</p>';
@@ -217,19 +234,19 @@ function renderResult(data) {
     let resistanceHtml = '';
     if (data.resistance_levels && data.resistance_levels.length) {
         resistanceHtml = '<ul class="level-list">' + data.resistance_levels.map(r =>
-            `<li class="level-item"><span class="level-dot resistance"></span>${r}</li>`
+            `<li class="level-item"><span class="level-dot resistance"></span>${escapeHtml(r)}</li>`
         ).join('') + '</ul>';
     } else {
         resistanceHtml = '<p style="color:var(--text3);font-size:13px">No key resistances identified</p>';
     }
 
-    const actionTrigger = data.action_trigger && data.action_trigger !== 'N/A' ? data.action_trigger : '';
-    const breakoutLevel = data.breakout_level && data.breakout_level !== 'N/A' ? data.breakout_level : '';
+    const actionTrigger = data.action_trigger && data.action_trigger !== 'N/A' ? escapeHtml(data.action_trigger) : '';
+    const breakoutLevel = data.breakout_level && data.breakout_level !== 'N/A' ? escapeHtml(data.breakout_level) : '';
     const breakoutDir = data.breakout_direction || '';
-    const expGain = data.expected_gain_pct && data.expected_gain_pct !== 'N/A' ? data.expected_gain_pct : '';
-    const expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? data.expected_loss_pct : '';
-    const rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? data.risk_reward_ratio : '';
-    const timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? data.breakout_timeframe : '';
+    const expGain = data.expected_gain_pct && data.expected_gain_pct !== 'N/A' ? escapeHtml(data.expected_gain_pct) : '';
+    const expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? escapeHtml(data.expected_loss_pct) : '';
+    const rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? escapeHtml(data.risk_reward_ratio) : '';
+    const timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? escapeHtml(data.breakout_timeframe) : '';
 
     const hasTradingSetup = actionTrigger || breakoutLevel || expGain || data.support_levels?.length || data.resistance_levels?.length;
 
@@ -290,23 +307,23 @@ function renderResult(data) {
         <div class="result-hero">
             <div class="result-top">
                 <div class="result-ticker-wrap">
-                    <span class="result-ticker">${data.ticker}</span>
-                    <span class="result-company">${data.company_name || ''}</span>
+                    <span class="result-ticker">${escapeHtml(data.ticker)}</span>
+                    <span class="result-company">${escapeHtml(data.company_name)}</span>
                 </div>
                 <span class="result-price" style="color:${priceColor}">${priceStr}</span>
             </div>
             ${entryHtml}
             <div class="badges">
-                <span class="badge ${recClass}">${rec}</span>
-                <span class="badge ${confClass}">${data.confidence} confidence</span>
-                <span class="badge ${riskClass}">${data.risk_level || 'N/A'} risk</span>
-                ${data.trend_status ? `<span class="badge badge-info">${data.trend_status}</span>` : ''}
-                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
-                <button class="btn-add-portfolio" onclick="showAddToPortfolioFromAnalysis('${data.ticker}', '${(data.company_name || '').replace(/'/g, "\\'")}', ${data.purchase_price || data.current_price || 0})">+ Portfolio</button>
-                <button class="btn-pf-tip" onclick="openTipFromPortfolio('${data.ticker}', '${data.share_token || ''}', '${(data.price_target_short || '').replace(/[^0-9.]/g, '')}', '${(data.stop_loss || '').replace(/[^0-9.]/g, '')}')">Tip</button>
+                <span class="badge ${recClass}">${escapeHtml(rec)}</span>
+                <span class="badge ${confClass}">${escapeHtml(data.confidence)} confidence</span>
+                <span class="badge ${riskClass}">${escapeHtml(data.risk_level) || 'N/A'} risk</span>
+                ${data.trend_status ? `<span class="badge badge-info">${escapeHtml(data.trend_status)}</span>` : ''}
+                ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${escapeHtml(data.share_token)}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
+                <button class="btn-add-portfolio" onclick="showAddToPortfolioFromAnalysis('${escapeHtml(data.ticker)}', '${escapeHtml((data.company_name || '').replace(/'/g, "\\'"))}', ${data.purchase_price || data.current_price || 0})">+ Portfolio</button>
+                <button class="btn-pf-tip" onclick="openTipFromPortfolio('${escapeHtml(data.ticker)}', '${escapeHtml(data.share_token || '')}', '${(data.price_target_short || '').replace(/[^0-9.]/g, '')}', '${(data.stop_loss || '').replace(/[^0-9.]/g, '')}')">Tip</button>
             </div>
             ${patternHtml}
-            <div class="result-summary">${data.short_summary}</div>
+            <div class="result-summary">${escapeHtml(data.short_summary)}</div>
         </div>
 
         ${tradingSetupHtml}
@@ -314,9 +331,9 @@ function renderResult(data) {
         <div class="cards-grid">
             <div class="card">
                 <div class="card-title">Targets & Stop Loss</div>
-                <div class="target-row"><span class="target-label">Short-term</span><span class="target-val">${data.price_target_short || 'N/A'}</span></div>
-                <div class="target-row"><span class="target-label">Long-term</span><span class="target-val">${data.price_target_long || 'N/A'}</span></div>
-                <div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">${data.stop_loss || 'N/A'}</span></div>
+                <div class="target-row"><span class="target-label">Short-term</span><span class="target-val">${escapeHtml(data.price_target_short) || 'N/A'}</span></div>
+                <div class="target-row"><span class="target-label">Long-term</span><span class="target-val">${escapeHtml(data.price_target_long) || 'N/A'}</span></div>
+                <div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">${escapeHtml(data.stop_loss) || 'N/A'}</span></div>
             </div>
             <div class="card">
                 <div class="card-title">Key Factors</div>
@@ -330,23 +347,23 @@ function renderResult(data) {
 
         <div class="chart-card">
             <div class="card-title">Candlestick Chart &mdash; SMA 20 / 150 / 200</div>
-            <img src="${API}/api/chart/${data.ticker}" alt="Chart"
+            <img src="${API}/api/chart/${encodeURIComponent(data.ticker)}" alt="Chart"
                  onerror="this.style.display='none'" />
         </div>
 
         ${data.news_digest ? `
         <div class="news-digest-card">
             <div class="card-title">AI News Digest</div>
-            <span class="sentiment-badge sentiment-${(data.news_digest.sentiment || '').toLowerCase()}">${data.news_digest.sentiment || 'N/A'}</span>
+            <span class="sentiment-badge sentiment-${escapeHtml((data.news_digest.sentiment || '').toLowerCase())}">${escapeHtml(data.news_digest.sentiment) || 'N/A'}</span>
             <ul class="digest-bullets">
-                ${(data.news_digest.summary_bullets || []).map(b => `<li>${b}</li>`).join('')}
+                ${(data.news_digest.summary_bullets || []).map(b => `<li>${escapeHtml(b)}</li>`).join('')}
             </ul>
         </div>
         ` : ''}
 
         <div class="analysis-card">
             <div class="card-title">Full Analysis</div>
-            <div class="full-analysis">${data.full_analysis || 'N/A'}</div>
+            <div class="full-analysis">${escapeHtml(data.full_analysis) || 'N/A'}</div>
         </div>
 
         <div class="news-card">
@@ -416,20 +433,20 @@ async function loadHistory() {
             const d = r.created_at ? new Date(r.created_at).toLocaleString() : '';
             const p = r.current_price ? `$${r.current_price.toFixed(2)}` : 'N/A';
             const requestedBy = r.source === 'telegram' ? (r.telegram_user || '') : (r.web_user || '');
-            return `<tr onclick="showDetail(${r.id})">
-                <td><strong style="font-family:'JetBrains Mono',monospace">${r.ticker}</strong></td>
-                <td>${r.company_name || ''}</td>
+            return `<tr onclick="showDetail(${parseInt(r.id)})">
+                <td><strong style="font-family:'JetBrains Mono',monospace">${escapeHtml(r.ticker)}</strong></td>
+                <td>${escapeHtml(r.company_name)}</td>
                 <td style="font-family:'JetBrains Mono',monospace">${p}</td>
-                <td><span class="badge ${cls}" style="font-size:10px;padding:3px 8px">${r.recommendation}</span></td>
-                <td>${r.confidence}</td>
-                ${showUserCol ? `<td style="color:var(--text2);font-size:12px">${requestedBy}</td>` : ''}
-                ${showSourceCol ? `<td><span class="source-badge ${src}">${r.source}</span></td>` : ''}
+                <td><span class="badge ${cls}" style="font-size:10px;padding:3px 8px">${escapeHtml(r.recommendation)}</span></td>
+                <td>${escapeHtml(r.confidence)}</td>
+                ${showUserCol ? `<td style="color:var(--text2);font-size:12px">${escapeHtml(requestedBy)}</td>` : ''}
+                ${showSourceCol ? `<td><span class="source-badge ${src}">${escapeHtml(r.source)}</span></td>` : ''}
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td style="display:flex;gap:6px;align-items:center">
-                    <button class="btn-add-portfolio" style="padding:3px 10px;font-size:10px" onclick="event.stopPropagation();showAddToPortfolioFromAnalysis('${r.ticker}', '${(r.company_name || '').replace(/'/g, "\\'")}', ${r.current_price || 0})">+ Portfolio</button>
-                    <button class="btn-pf-tip" onclick="event.stopPropagation();openTipFromPortfolio('${r.ticker}', '${r.share_token || ''}', '${(r.price_target_short || '').replace(/[^0-9.]/g, '')}', '${(r.stop_loss || '').replace(/[^0-9.]/g, '')}')">Tip</button>
-                    ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${r.share_token}', this)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
-                    ${isAdmin ? `<button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${r.id})" title="Delete">&times;</button>` : ''}
+                    <button class="btn-add-portfolio" style="padding:3px 10px;font-size:10px" onclick="event.stopPropagation();showAddToPortfolioFromAnalysis('${escapeHtml(r.ticker)}', '${escapeHtml((r.company_name || '').replace(/'/g, "\\'"))}', ${r.current_price || 0})">+ Portfolio</button>
+                    <button class="btn-pf-tip" onclick="event.stopPropagation();openTipFromPortfolio('${escapeHtml(r.ticker)}', '${escapeHtml(r.share_token || '')}', '${(r.price_target_short || '').replace(/[^0-9.]/g, '')}', '${(r.stop_loss || '').replace(/[^0-9.]/g, '')}')">Tip</button>
+                    ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${escapeHtml(r.share_token)}', this)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
+                    ${isAdmin ? `<button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${parseInt(r.id)})" title="Delete">&times;</button>` : ''}
                 </td>
             </tr>`;
         }).join('');
@@ -450,21 +467,21 @@ async function showDetail(id) {
 
         // Pattern banner
         const patternHtml = data.chart_pattern && data.chart_pattern !== 'None detected' && data.chart_pattern !== 'N/A'
-            ? `<div class="pattern-banner"><strong>Pattern Detected:</strong> ${data.chart_pattern}</div>` : '';
+            ? `<div class="pattern-banner"><strong>Pattern Detected:</strong> ${escapeHtml(data.chart_pattern)}</div>` : '';
 
         // Trading Setup
-        const actionTrigger = data.action_trigger && data.action_trigger !== 'N/A' ? data.action_trigger : '';
-        const breakoutLevel = data.breakout_level && data.breakout_level !== 'N/A' ? data.breakout_level : '';
+        const actionTrigger = data.action_trigger && data.action_trigger !== 'N/A' ? escapeHtml(data.action_trigger) : '';
+        const breakoutLevel = data.breakout_level && data.breakout_level !== 'N/A' ? escapeHtml(data.breakout_level) : '';
         const breakoutDir = data.breakout_direction || '';
-        const expGain = data.expected_gain_pct && data.expected_gain_pct !== 'N/A' ? data.expected_gain_pct : '';
-        const expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? data.expected_loss_pct : '';
-        const rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? data.risk_reward_ratio : '';
-        const timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? data.breakout_timeframe : '';
+        const expGain = data.expected_gain_pct && data.expected_gain_pct !== 'N/A' ? escapeHtml(data.expected_gain_pct) : '';
+        const expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? escapeHtml(data.expected_loss_pct) : '';
+        const rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? escapeHtml(data.risk_reward_ratio) : '';
+        const timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? escapeHtml(data.breakout_timeframe) : '';
 
         let supportHtml = '';
         if (data.support_levels && data.support_levels.length) {
             supportHtml = '<ul class="level-list">' + data.support_levels.map(s =>
-                `<li class="level-item"><span class="level-dot support"></span>${s}</li>`
+                `<li class="level-item"><span class="level-dot support"></span>${escapeHtml(s)}</li>`
             ).join('') + '</ul>';
         } else {
             supportHtml = '<p style="color:var(--text3);font-size:13px">No key supports identified</p>';
@@ -472,7 +489,7 @@ async function showDetail(id) {
         let resistanceHtml = '';
         if (data.resistance_levels && data.resistance_levels.length) {
             resistanceHtml = '<ul class="level-list">' + data.resistance_levels.map(r =>
-                `<li class="level-item"><span class="level-dot resistance"></span>${r}</li>`
+                `<li class="level-item"><span class="level-dot resistance"></span>${escapeHtml(r)}</li>`
             ).join('') + '</ul>';
         } else {
             resistanceHtml = '<p style="color:var(--text3);font-size:13px">No key resistances identified</p>';
@@ -500,13 +517,13 @@ async function showDetail(id) {
         // Targets & Stop Loss + Key Factors + Metrics
         let factorsHtml = '';
         if (data.key_factors && data.key_factors.length) {
-            factorsHtml = '<ul>' + data.key_factors.map(f => `<li>${f}</li>`).join('') + '</ul>';
+            factorsHtml = '<ul>' + data.key_factors.map(f => `<li>${escapeHtml(f)}</li>`).join('') + '</ul>';
         }
 
         let metricsHtml = '';
         if (data.stock_data) {
             const sd = data.stock_data;
-            const fmt = v => typeof v === 'number' ? `$${v.toFixed(2)}` : v;
+            const fmt = v => typeof v === 'number' ? `$${v.toFixed(2)}` : escapeHtml(v);
             const rows = [
                 ['P/E', sd.pe_ratio], ['Fwd P/E', sd.forward_pe], ['EPS', sd.eps],
                 ['Mkt Cap', sd.market_cap],
@@ -518,7 +535,7 @@ async function showDetail(id) {
                 ['MA Setup', sd.ma_alignment],
             ].filter(([_, v]) => v != null && v !== '');
             metricsHtml = '<div class="metric-grid">' +
-                rows.map(([l, v]) => `<div><span class="metric-label">${l}</span><span class="metric-val">${v}</span></div>`).join('') +
+                rows.map(([l, v]) => `<div><span class="metric-label">${escapeHtml(l)}</span><span class="metric-val">${escapeHtml(v)}</span></div>`).join('') +
                 '</div>';
         }
 
@@ -526,9 +543,9 @@ async function showDetail(id) {
             <div class="cards-grid" style="margin-top:16px">
                 <div class="card">
                     <div class="card-title">Targets & Stop Loss</div>
-                    <div class="target-row"><span class="target-label">Short-term</span><span class="target-val">${data.price_target_short || 'N/A'}</span></div>
-                    <div class="target-row"><span class="target-label">Long-term</span><span class="target-val">${data.price_target_long || 'N/A'}</span></div>
-                    <div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">${data.stop_loss || 'N/A'}</span></div>
+                    <div class="target-row"><span class="target-label">Short-term</span><span class="target-val">${escapeHtml(data.price_target_short) || 'N/A'}</span></div>
+                    <div class="target-row"><span class="target-label">Long-term</span><span class="target-val">${escapeHtml(data.price_target_long) || 'N/A'}</span></div>
+                    <div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">${escapeHtml(data.stop_loss) || 'N/A'}</span></div>
                 </div>
                 <div class="card">
                     <div class="card-title">Key Factors</div>
@@ -545,7 +562,7 @@ async function showDetail(id) {
         let newsHtml = '';
         if (data.news_data && data.news_data.length) {
             newsHtml = '<div class="news-card" style="margin-top:16px"><div class="card-title">News (' + data.news_data.length + ')</div><ul class="news-list">' + data.news_data.map(a =>
-                `<li class="news-item"><a href="${a.link}" target="_blank">${a.title}</a><div class="news-source">${a.source} ${a.published ? '&mdash; ' + a.published : ''}</div></li>`
+                `<li class="news-item"><a href="${sanitizeUrl(a.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.title)}</a><div class="news-source">${escapeHtml(a.source)} ${a.published ? '&mdash; ' + escapeHtml(a.published) : ''}</div></li>`
             ).join('') + '</ul></div>';
         }
 
@@ -555,11 +572,11 @@ async function showDetail(id) {
         if (hasUserInfo) {
             let rows = '';
             if (data.source === 'telegram') {
-                if (data.telegram_user) rows += `<div class="user-info-row"><span class="user-info-label">Username</span><span class="user-info-val">${data.telegram_user}</span></div>`;
-                if (data.telegram_user_id) rows += `<div class="user-info-row"><span class="user-info-label">Telegram ID</span><span class="user-info-val">${data.telegram_user_id}</span></div>`;
+                if (data.telegram_user) rows += `<div class="user-info-row"><span class="user-info-label">Username</span><span class="user-info-val">${escapeHtml(data.telegram_user)}</span></div>`;
+                if (data.telegram_user_id) rows += `<div class="user-info-row"><span class="user-info-label">Telegram ID</span><span class="user-info-val">${escapeHtml(data.telegram_user_id)}</span></div>`;
             }
-            if (data.user_ip) rows += `<div class="user-info-row"><span class="user-info-label">IP Address</span><span class="user-info-val">${data.user_ip}</span></div>`;
-            rows += `<div class="user-info-row"><span class="user-info-label">Source</span><span class="user-info-val"><span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span></span></div>`;
+            if (data.user_ip) rows += `<div class="user-info-row"><span class="user-info-label">IP Address</span><span class="user-info-val">${escapeHtml(data.user_ip)}</span></div>`;
+            rows += `<div class="user-info-row"><span class="user-info-label">Source</span><span class="user-info-val"><span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${escapeHtml(data.source)}</span></span></div>`;
             userInfoHtml = `<div class="user-info-card"><div class="card-title">User Info</div>${rows}</div>`;
         }
 
@@ -571,7 +588,7 @@ async function showDetail(id) {
                 <div class="block-user-section" style="margin-bottom:16px">
                     <button class="btn-block-user ${isBlocked ? 'blocked' : ''}"
                             id="blockBtn"
-                            onclick="toggleBlockUser('${data.telegram_user_id}', '${(data.telegram_user || '').replace(/'/g, "\\'")}', ${isBlocked})">
+                            onclick="toggleBlockUser('${escapeHtml(data.telegram_user_id)}', '${escapeHtml((data.telegram_user || '').replace(/'/g, "\\'"))}', ${isBlocked})">
                         ${isBlocked ? 'Unblock User' : 'Block User'}
                     </button>
                     ${isBlocked ? '<span class="block-status">This user is blocked from using the bot</span>' : ''}
@@ -583,22 +600,22 @@ async function showDetail(id) {
             <div class="result-hero" style="margin-bottom:0">
                 <div class="result-top">
                     <div class="result-ticker-wrap">
-                        <span class="result-ticker">${data.ticker}</span>
-                        <span class="result-company">${data.company_name || ''}</span>
+                        <span class="result-ticker">${escapeHtml(data.ticker)}</span>
+                        <span class="result-company">${escapeHtml(data.company_name)}</span>
                     </div>
                     <span class="result-price" style="color:${priceColor}">${price}</span>
                 </div>
                 <div class="badges">
-                    <span class="badge ${cls}">${rec}</span>
-                    <span class="badge ${confClass}">${data.confidence} confidence</span>
-                    ${data.risk_level ? `<span class="badge ${riskClass}">${data.risk_level} risk</span>` : ''}
-                    ${data.trend_status ? `<span class="badge badge-info">${data.trend_status}</span>` : ''}
-                    <span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${data.source}</span>
-                    ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${data.share_token}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
+                    <span class="badge ${cls}">${escapeHtml(rec)}</span>
+                    <span class="badge ${confClass}">${escapeHtml(data.confidence)} confidence</span>
+                    ${data.risk_level ? `<span class="badge ${riskClass}">${escapeHtml(data.risk_level)} risk</span>` : ''}
+                    ${data.trend_status ? `<span class="badge badge-info">${escapeHtml(data.trend_status)}</span>` : ''}
+                    <span class="source-badge ${data.source === 'telegram' ? 'telegram' : ''}">${escapeHtml(data.source)}</span>
+                    ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${escapeHtml(data.share_token)}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
                 </div>
-                <p style="color:var(--text3);font-size:12px;margin-bottom:12px">${date}${data.telegram_user ? ' &mdash; ' + data.telegram_user : ''}</p>
+                <p style="color:var(--text3);font-size:12px;margin-bottom:12px">${date}${data.telegram_user ? ' &mdash; ' + escapeHtml(data.telegram_user) : ''}</p>
                 ${patternHtml}
-                <div class="result-summary">${data.short_summary}</div>
+                <div class="result-summary">${escapeHtml(data.short_summary)}</div>
             </div>
             ${blockBtnHtml}
             ${userInfoHtml}
@@ -606,20 +623,20 @@ async function showDetail(id) {
             ${cardsHtml}
             <div class="chart-card" style="margin-top:16px">
                 <div class="card-title">Candlestick Chart</div>
-                <img src="${API}/api/chart/${data.ticker}" alt="Chart" onerror="this.parentElement.style.display='none'" />
+                <img src="${API}/api/chart/${encodeURIComponent(data.ticker)}" alt="Chart" onerror="this.parentElement.style.display='none'" />
             </div>
             ${data.news_digest ? `
             <div class="news-digest-card" style="margin-top:16px">
                 <div class="card-title">AI News Digest</div>
-                <span class="sentiment-badge sentiment-${(data.news_digest.sentiment || '').toLowerCase()}">${data.news_digest.sentiment || 'N/A'}</span>
+                <span class="sentiment-badge sentiment-${escapeHtml((data.news_digest.sentiment || '').toLowerCase())}">${escapeHtml(data.news_digest.sentiment) || 'N/A'}</span>
                 <ul class="digest-bullets">
-                    ${(data.news_digest.summary_bullets || []).map(b => `<li>${b}</li>`).join('')}
+                    ${(data.news_digest.summary_bullets || []).map(b => `<li>${escapeHtml(b)}</li>`).join('')}
                 </ul>
             </div>
             ` : ''}
             <div class="analysis-card" style="margin-top:16px">
                 <div class="card-title">Full Analysis</div>
-                <div class="full-analysis">${data.full_analysis || 'N/A'}</div>
+                <div class="full-analysis">${escapeHtml(data.full_analysis) || 'N/A'}</div>
             </div>
             ${newsHtml}
         `;
@@ -718,7 +735,7 @@ async function loadUsage() {
             const pct = s.limit > 0 ? s.pct : 0;
             const barColor = pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--yellow)' : 'var(--green)';
             return `<div class="usage-card">
-                <div class="usage-card-label">${s.label}</div>
+                <div class="usage-card-label">${escapeHtml(s.label)}</div>
                 <div class="usage-card-count">${s.used} <span class="usage-card-limit">/ ${limitStr}</span></div>
                 ${s.limit > 0 ? `<div class="usage-bar-bg"><div class="usage-bar-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div></div>` : '<div class="usage-bar-bg"><div class="usage-bar-fill" style="width:0"></div></div>'}
             </div>`;
@@ -760,11 +777,11 @@ async function loadUsers() {
             const d = u.created_at ? new Date(u.created_at).toLocaleString() : '';
             const roleCls = u.role === 'admin' ? 'badge-buy' : 'badge-info';
             const deleteBtn = u.role === 'admin' ? '' :
-                `<button class="btn-delete-row" onclick="deleteUserAccount(${u.id}, '${u.username.replace(/'/g, "\\'")}')" title="Delete">&times;</button>`;
+                `<button class="btn-delete-row" onclick="deleteUserAccount(${parseInt(u.id)}, '${escapeHtml(u.username.replace(/'/g, "\\'"))}')" title="Delete">&times;</button>`;
             return `<tr>
-                <td><strong>${u.username}</strong></td>
-                <td style="font-family:'JetBrains Mono',monospace;color:var(--accent2);font-size:12px">${u.user_code || '-'}</td>
-                <td><span class="badge ${roleCls}" style="font-size:10px;padding:3px 8px">${u.role}</span></td>
+                <td><strong>${escapeHtml(u.username)}</strong></td>
+                <td style="font-family:'JetBrains Mono',monospace;color:var(--accent2);font-size:12px">${escapeHtml(u.user_code) || '-'}</td>
+                <td><span class="badge ${roleCls}" style="font-size:10px;padding:3px 8px">${escapeHtml(u.role)}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td>${deleteBtn}</td>
             </tr>`;
@@ -784,10 +801,22 @@ async function createUser() {
         msg.textContent = 'Username and password are required';
         return;
     }
-    if (password.length < 4) {
+    if (password.length < 8) {
         msg.style.display = 'block';
         msg.style.color = 'var(--red)';
-        msg.textContent = 'Password must be at least 4 characters';
+        msg.textContent = 'Password must be at least 8 characters';
+        return;
+    }
+    if (!/[A-Z]/.test(password)) {
+        msg.style.display = 'block';
+        msg.style.color = 'var(--red)';
+        msg.textContent = 'Password must contain at least one uppercase letter';
+        return;
+    }
+    if (!/[0-9]/.test(password)) {
+        msg.style.display = 'block';
+        msg.style.color = 'var(--red)';
+        msg.textContent = 'Password must contain at least one number';
         return;
     }
 
