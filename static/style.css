@@ -1677,6 +1677,28 @@ body {
     margin-top: 4px;
 }
 
+/* Chat loading spinner */
+.chat-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 40px 0;
+    color: var(--text3);
+    font-size: 13px;
+}
+.chat-loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: chatSpin 0.7s linear infinite;
+}
+@keyframes chatSpin {
+    to { transform: rotate(360deg); }
+}
+
 /* === Tip Cards === */
 .tip-card {
     background: var(--surface);

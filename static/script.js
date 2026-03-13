@@ -2695,6 +2695,8 @@ async function removeFriend(id, name) {
 // --- Chat ---
 
 async function loadConversations() {
+    var el = document.getElementById('convoList');
+    el.innerHTML = '<div class="chat-loading"><div class="chat-loading-spinner"></div><div>Loading chats...</div></div>';
     try {
         var resp = await fetch(API + '/api/conversations');
         var data = await resp.json();
@@ -2783,10 +2785,13 @@ function closeChatView() {
 }
 
 async function loadChatMessages() {
+    var el = document.getElementById('chatMessages');
+    if (!el.querySelector('.chat-bubble-wrap')) {
+        el.innerHTML = '<div class="chat-loading"><div class="chat-loading-spinner"></div><div>Loading chat...</div></div>';
+    }
     try {
         var resp = await fetch(API + '/api/messages/' + _chatFriendId);
         var timeline = await resp.json();
-        var el = document.getElementById('chatMessages');
         if (!timeline.length) {
             el.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:40px">No messages yet. Say hello!</p>';
             return;
@@ -3212,10 +3217,11 @@ function closeChatSidebar() {
 }
 
 async function loadSidebarConversations() {
+    var el = document.getElementById('sidebarConvoList');
+    el.innerHTML = '<div class="chat-loading"><div class="chat-loading-spinner"></div><div>Loading chats...</div></div>';
     try {
         var resp = await fetch(API + '/api/conversations');
         var convos = await resp.json();
-        var el = document.getElementById('sidebarConvoList');
         if (!convos.length) {
             el.innerHTML = '<p style="color:var(--text3);font-size:13px;padding:16px">No conversations yet. Add a friend and start chatting!</p>';
             return;
@@ -3280,10 +3286,13 @@ function closeSidebarChatView() {
 
 async function loadSidebarChatMessages() {
     if (!_sidebarChatFriendId) return;
+    var el = document.getElementById('sidebarChatMessages');
+    if (!el.querySelector('.chat-bubble-wrap')) {
+        el.innerHTML = '<div class="chat-loading"><div class="chat-loading-spinner"></div><div>Loading chat...</div></div>';
+    }
     try {
         var resp = await fetch(API + '/api/messages/' + _sidebarChatFriendId);
         var timeline = await resp.json();
-        var el = document.getElementById('sidebarChatMessages');
         if (!timeline.length) {
             el.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:40px">No messages yet. Say hello!</p>';
             return;
