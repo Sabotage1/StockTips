@@ -1210,7 +1210,7 @@ def get_conversations(user_id: int) -> List[dict]:
 
 
 def mark_messages_read(user_id: int, sender_id: int) -> int:
-    """Mark all messages from sender_id to user_id as read."""
+    """Mark all messages from sender_id to user_id as read, including their notifications."""
     db = SessionLocal()
     try:
         count = db.query(Message).filter(
@@ -1218,6 +1218,18 @@ def mark_messages_read(user_id: int, sender_id: int) -> int:
             Message.receiver_id == user_id,
             Message.is_read == 0
         ).update({"is_read": 1})
+        # Also mark the corresponding message notifications as read
+        msg_ids = [r[0] for r in db.query(Message.id).filter(
+            Message.sender_id == sender_id,
+            Message.receiver_id == user_id,
+        ).all()]
+        if msg_ids:
+            db.query(Notification).filter(
+                Notification.user_id == user_id,
+                Notification.type == "message",
+                Notification.reference_id.in_(msg_ids),
+                Notification.is_read == 0,
+            ).update({"is_read": 1}, synchronize_session=False)
         db.commit()
         return count
     finally:
@@ -1510,6 +1522,13 @@ def mark_tip_read(tip_id: int, user_id: int) -> bool:
         if not t:
             return False
         t.is_read = 1
+        # Also mark the corresponding tip notification as read
+        db.query(Notification).filter(
+            Notification.user_id == user_id,
+            Notification.type == "tip",
+            Notification.reference_id == tip_id,
+            Notification.is_read == 0,
+        ).update({"is_read": 1})
         db.commit()
         return True
     finally:

@@ -2430,6 +2430,14 @@ function refreshChatBadge() {
         if (d.count > 0) { b.textContent = d.count; b.style.display = ''; }
         else b.style.display = 'none';
     }).catch(function() {});
+    // Also refresh the social notification badge (notifications are now marked read server-side)
+    fetch(API + '/api/notifications/count').then(function(r) { return r.json(); }).then(function(counts) {
+        var badge = document.getElementById('socialBadge');
+        if (!badge) return;
+        if (counts.total > 0) { badge.textContent = counts.total; badge.style.display = ''; }
+        else badge.style.display = 'none';
+        _lastNotifCounts = counts;
+    }).catch(function() {});
 }
 
 async function pollNotifications() {
