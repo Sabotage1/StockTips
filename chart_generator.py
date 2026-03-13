@@ -149,7 +149,9 @@ def generate_chart(ticker, company_name="", analysis_data=None):
 
     ax_main = axes[0]
     current_price = df["Close"].iloc[-1]
-    y_min, y_max = ax_main.get_ylim()
+    # Use actual data range for filtering overlays (axis limits can have excessive padding)
+    y_min = float(df["Low"].min())
+    y_max = float(df["High"].max())
     x_min, x_max = ax_main.get_xlim()
 
     # Build legend entries
@@ -194,6 +196,9 @@ def _draw_analysis_overlays(ax, data, current_price, x_min, x_max, y_min, y_max,
             continue
 
         if p2 is not None and abs(p2 - p1) > 0.01:
+            # Skip if p2 is also out of range
+            if p2 < y_min or p2 > y_max:
+                continue
             # Draw a shaded zone
             ax.axhspan(min(p1, p2), max(p1, p2), color="#00b894", alpha=0.08)
             ax.axhline(y=(p1 + p2) / 2, color="#00b894", linewidth=1.0, linestyle="--", alpha=0.7)
@@ -220,6 +225,9 @@ def _draw_analysis_overlays(ax, data, current_price, x_min, x_max, y_min, y_max,
             continue
 
         if p2 is not None and abs(p2 - p1) > 0.01:
+            # Skip if p2 is also out of range
+            if p2 < y_min or p2 > y_max:
+                continue
             ax.axhspan(min(p1, p2), max(p1, p2), color="#e74c3c", alpha=0.08)
             ax.axhline(y=(p1 + p2) / 2, color="#e74c3c", linewidth=1.0, linestyle="--", alpha=0.7)
             ax.annotate(
