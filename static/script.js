@@ -2916,7 +2916,7 @@ async function loadTips() {
             var expired = isTipExpired(t);
             var expiryStr = formatExpiry(t);
             var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
-            return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
+            return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" data-tip-id="' + t.id + '" onclick="viewTipDetail(' + t.id + ')">' +
                 '<div class="tip-card-header">' +
                     '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
                 '</div>' +
@@ -2936,8 +2936,12 @@ async function viewTipDetail(tipId) {
     try {
         var resp = await fetch(API + '/api/tips/' + tipId);
         var tip = await resp.json();
-        // Mark as read
-        fetch(API + '/api/tips/' + tipId + '/read', { method: 'POST' }).then(function() { refreshChatBadge(); });
+        // Mark as read and remove unread dot from tip card
+        fetch(API + '/api/tips/' + tipId + '/read', { method: 'POST' }).then(function() {
+            refreshChatBadge();
+            // Remove unread dot from all matching tip cards (main panel + sidebar)
+            document.querySelectorAll('.tip-card[data-tip-id="' + tipId + '"] .tip-unread-dot').forEach(function(dot) { dot.remove(); });
+        });
         var details = '';
         if (tip.breakout_price) details += '<div class="target-row"><span class="target-label">Breakout Price</span><span class="target-val">$' + tip.breakout_price.toFixed(2) + '</span></div>';
         if (tip.stop_loss) details += '<div class="target-row"><span class="target-label">Stop Loss</span><span class="target-val red">$' + tip.stop_loss.toFixed(2) + '</span></div>';
@@ -3417,7 +3421,7 @@ async function loadSidebarTips() {
             var expired = isTipExpired(t);
             var expiryStr = formatExpiry(t);
             var expiryTag = expiryStr ? '<span class="tip-expiry-tag' + (expired ? ' expired' : '') + '">' + expiryStr + '</span>' : '';
-            return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" onclick="viewTipDetail(' + t.id + ')">' +
+            return '<div class="tip-card' + (expired ? ' tip-expired' : '') + '" data-tip-id="' + t.id + '" onclick="viewTipDetail(' + t.id + ')">' +
                 '<div class="tip-card-header">' +
                     '<span>' + unreadDot + '<span class="tip-card-ticker">' + escapeHtml(t.ticker) + '</span>' + expiryTag + '</span>' +
                 '</div>' +
