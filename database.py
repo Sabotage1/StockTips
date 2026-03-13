@@ -315,7 +315,12 @@ def _is_error_analysis(confidence: str, short_summary: str) -> bool:
 
 
 def _delete_old_analyses(db, ticker: str, web_user: str = "", source: str = "web", telegram_user_id: str = "", hours: int = 24):
-    """Delete previous analyses for the same ticker+user from the past N hours."""
+    """Clean up analyses for the same ticker+user from the past N hours.
+
+    Allows up to 2 analyses per ticker per user in the time window.
+    When there are already 2+, deletes older ones keeping only the most recent.
+    Analyses referenced by tips (via share_token) are always preserved.
+    """
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours)
     query = db.query(TickerAnalysis).filter(
         TickerAnalysis.ticker == ticker.upper(),
@@ -325,7 +330,25 @@ def _delete_old_analyses(db, ticker: str, web_user: str = "", source: str = "web
         query = query.filter(TickerAnalysis.telegram_user_id == telegram_user_id)
     elif web_user:
         query = query.filter(TickerAnalysis.web_user == web_user)
-    query.delete(synchronize_session=False)
+
+    existing = query.order_by(TickerAnalysis.created_at.desc()).all()
+    if len(existing) < 2:
+        return  # Allow up to 2 analyses before cleanup
+
+    # Find share_tokens referenced by tips (must not delete those)
+    tip_tokens = set()
+    all_tokens = [a.share_token for a in existing if a.share_token]
+    if all_tokens:
+        linked = db.query(Tip.analysis_share_token).filter(
+            Tip.analysis_share_token.in_(all_tokens)
+        ).all()
+        tip_tokens = {r[0] for r in linked}
+
+    # Keep the most recent, delete the rest (skip tip-linked ones)
+    for old in existing[1:]:
+        if old.share_token and old.share_token in tip_tokens:
+            continue
+        db.delete(old)
 
 
 def save_analysis(
