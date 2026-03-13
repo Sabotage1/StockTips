@@ -155,6 +155,14 @@ CRITICAL RULES FOR THE NEW FIELDS:
 - action_trigger MUST be a specific, actionable statement with exact price levels and conditions.
 - breakout_timeframe MUST give a realistic estimate based on the pattern and catalysts (e.g., earnings date).
 
+CRITICAL CONSISTENCY RULES:
+- The breakout_level field MUST contain the EXACT SAME price mentioned in the action_trigger for the entry/breakout.
+  If action_trigger says "BUY on break above $45.00", then breakout_level MUST be "$45.00".
+- The stop_loss field MUST contain the EXACT SAME stop price mentioned in the action_trigger and recommendation.
+  If action_trigger says "stop at $43.50", then stop_loss MUST be "$43.50 (based on ATR)" or similar with $43.50.
+- The stop price in the recommendation field (e.g., "BUY at $X (stop $Y)") MUST match stop_loss.
+- Do NOT use different prices in different fields. All fields must be internally consistent.
+
 DISCLAIMER: Always note in the full_analysis that this is AI-generated analysis for informational purposes and not financial advice."""
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}

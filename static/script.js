@@ -267,6 +267,7 @@ function renderResult(data) {
     const expLoss = data.expected_loss_pct && data.expected_loss_pct !== 'N/A' ? escapeHtml(data.expected_loss_pct) : '';
     const rrRatio = data.risk_reward_ratio && data.risk_reward_ratio !== 'N/A' ? escapeHtml(data.risk_reward_ratio) : '';
     const timeframe = data.breakout_timeframe && data.breakout_timeframe !== 'N/A' ? escapeHtml(data.breakout_timeframe) : '';
+    const tipPrices = extractTipPricesFromAction(data.action_trigger, data.breakout_level, data.stop_loss, data.recommendation);
 
     const hasTradingSetup = actionTrigger || breakoutLevel || expGain || data.support_levels?.length || data.resistance_levels?.length;
 
@@ -340,7 +341,7 @@ function renderResult(data) {
                 ${data.trend_status ? `<span class="badge badge-info">${escapeHtml(data.trend_status)}</span>` : ''}
                 ${data.share_token ? `<button class="btn-share" onclick="copyShareLink('${escapeHtml(data.share_token)}', this)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
                 <button class="btn-add-portfolio" onclick="showAddToPortfolioFromAnalysis('${escapeHtml(data.ticker)}', '${escapeHtml((data.company_name || '').replace(/'/g, "\\'"))}', ${data.purchase_price || data.current_price || 0})">+ Portfolio</button>
-                <button class="btn-pf-tip" onclick="openTipFromPortfolio('${escapeHtml(data.ticker)}', '${escapeHtml(data.share_token || '')}', '${extractFirstPrice(data.breakout_level)}', '${extractFirstPrice(data.stop_loss)}')">Tip</button>
+                <button class="btn-pf-tip" onclick="openTipFromPortfolio('${escapeHtml(data.ticker)}', '${escapeHtml(data.share_token || '')}', '${tipPrices.breakout}', '${tipPrices.stop}')">Tip</button>
             </div>
             ${patternHtml}
             <div class="result-summary">${escapeHtml(data.short_summary)}</div>
@@ -464,7 +465,7 @@ async function loadHistory() {
                 <td style="color:var(--text2);font-size:12px">${d}</td>
                 <td style="display:flex;gap:6px;align-items:center">
                     <button class="btn-add-portfolio" style="padding:3px 10px;font-size:10px" onclick="event.stopPropagation();showAddToPortfolioFromAnalysis('${escapeHtml(r.ticker)}', '${escapeHtml((r.company_name || '').replace(/'/g, "\\'"))}', ${r.current_price || 0})">+ Portfolio</button>
-                    <button class="btn-pf-tip" onclick="event.stopPropagation();openTipFromPortfolio('${escapeHtml(r.ticker)}', '${escapeHtml(r.share_token || '')}', '${extractFirstPrice(r.breakout_level)}', '${extractFirstPrice(r.stop_loss)}')">Tip</button>
+                    <button class="btn-pf-tip" onclick="event.stopPropagation();openTipFromPortfolio('${escapeHtml(r.ticker)}', '${escapeHtml(r.share_token || '')}', '${extractTipPricesFromAction(r.action_trigger, r.breakout_level, r.stop_loss, r.recommendation).breakout}', '${extractTipPricesFromAction(r.action_trigger, r.breakout_level, r.stop_loss, r.recommendation).stop}')">Tip</button>
                     ${r.share_token ? `<button class="btn-share btn-share-sm" onclick="event.stopPropagation();copyShareLink('${escapeHtml(r.share_token)}', this)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</button>` : ''}
                     ${isAdmin ? `<button class="btn-delete-row" onclick="event.stopPropagation();deleteAnalysis(${parseInt(r.id)})" title="Delete">&times;</button>` : ''}
                 </td>
@@ -3028,6 +3029,31 @@ function extractFirstPrice(str) {
     // Match first dollar amount like $41.50 or 41.5
     var m = s.match(/\$?([\d]+\.?\d*)/);
     return m ? m[1] : '';
+}
+
+function extractTipPricesFromAction(actionTrigger, fallbackBreakout, fallbackStop, recommendation) {
+    var breakout = extractFirstPrice(fallbackBreakout);
+    var stop = extractFirstPrice(fallbackStop);
+    // Try to extract from action_trigger first (most specific)
+    if (actionTrigger) {
+        var at = String(actionTrigger);
+        var bm = at.match(/(?:above|breaks?|at)\s+\$?([\d]+\.?\d*)/i);
+        if (bm) breakout = bm[1];
+        var sm = at.match(/stop[\s\-]*(?:loss\s*)?(?:at\s*)?\$?([\d]+\.?\d*)/i);
+        if (sm) stop = sm[1];
+    }
+    // Also check recommendation field for stop: "BUY if breaks $45 (stop $43.50)"
+    if (recommendation) {
+        var rec = String(recommendation);
+        var rsm = rec.match(/stop\s+\$?([\d]+\.?\d*)/i);
+        if (rsm) stop = rsm[1];
+        // Check for entry price in recommendation if not found in action_trigger
+        if (!actionTrigger || !String(actionTrigger).match(/(?:above|breaks?|at)\s+\$/i)) {
+            var rbm = rec.match(/(?:above|breaks?|at)\s+\$?([\d]+\.?\d*)/i);
+            if (rbm) breakout = rbm[1];
+        }
+    }
+    return { breakout: breakout, stop: stop };
 }
 
 function prefillTipFields(ticker, shareToken, breakoutPrice, stopLoss) {
