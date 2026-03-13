@@ -61,27 +61,28 @@ const modalOverlay = document.getElementById('modalOverlay');
 const modalContent = document.getElementById('modalContent');
 
 // Nav
-document.querySelectorAll('.nav-btn[data-panel]').forEach(btn => {
-    btn.addEventListener('click', () => {
-        closeMobileMenu();
-        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentPanel = btn.dataset.panel;
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        document.getElementById(`panel-${currentPanel}`).classList.add('active');
-        // Stop portfolio refresh when leaving that tab
-        if (currentPanel !== 'portfolio') {
-            stopPortfolioRefresh();
-            if (currentStockDetailId) closeStockDetail();
-        }
-        if (currentPanel === 'history') loadHistory();
-        if (currentPanel === 'usage') loadUsage();
-        if (currentPanel === 'users') loadUsers();
-        if (currentPanel === 'portfolio') loadPortfolio();
-        if (currentPanel === 'social') { loadSocialPanel(); closeChatSidebar(); }
-        updateFloatingChatBtn();
-    });
-});
+function switchPanel(panel) {
+    closeMobileMenu();
+    currentPanel = panel;
+    document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+    var activeBtn = document.querySelector('.nav-btn[data-panel="' + panel + '"]');
+    if (activeBtn) activeBtn.classList.add('active');
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+    var panelEl = document.getElementById('panel-' + panel);
+    if (panelEl) panelEl.classList.add('active');
+    // Stop portfolio refresh when leaving that tab
+    if (panel !== 'portfolio') {
+        stopPortfolioRefresh();
+        if (currentStockDetailId) closeStockDetail();
+    }
+    if (panel === 'history') loadHistory();
+    if (panel === 'usage') loadUsage();
+    if (panel === 'users') loadUsers();
+    if (panel === 'portfolio') loadPortfolio();
+    if (panel === 'social') { loadSocialPanel(); closeChatSidebar(); }
+    updateFloatingChatBtn();
+    window.scrollTo(0, 0);
+}
 
 // Quick analyze chips
 function quickAnalyze(t) {
@@ -151,16 +152,7 @@ async function analyze() {
 }
 
 function goToAnalyze(ticker, purchasePrice) {
-    closeMobileMenu();
-    // Switch to analyze panel
-    document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
-    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-    var analyzeBtn = document.querySelector('.nav-btn[data-panel="analyze"]');
-    if (analyzeBtn) analyzeBtn.classList.add('active');
-    document.getElementById('panel-analyze').classList.add('active');
-    currentPanel = 'analyze';
-    stopPortfolioRefresh();
-
+    switchPanel('analyze');
     // Fill ticker and purchase price, then trigger analysis
     tickerInput.value = ticker;
     var priceInput = document.getElementById('purchasePriceInput');
@@ -794,7 +786,7 @@ async function loadUsers() {
         if (!resp.ok) return;
         const users = await resp.json();
         if (!users.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No users</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-row">No users</td></tr>';
             return;
         }
         tbody.innerHTML = users.map(u => {
@@ -804,6 +796,7 @@ async function loadUsers() {
                 `<button class="btn-delete-row" onclick="deleteUserAccount(${parseInt(u.id)}, '${escapeHtml(u.username.replace(/'/g, "\\'"))}')" title="Delete">&times;</button>`;
             return `<tr>
                 <td><strong>${escapeHtml(u.username)}</strong></td>
+                <td style="color:var(--text2);font-size:13px">${escapeHtml(u.display_name) || '-'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--accent2);font-size:12px">${escapeHtml(u.user_code) || '-'}</td>
                 <td><span class="badge ${roleCls}" style="font-size:10px;padding:3px 8px">${escapeHtml(u.role)}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
@@ -815,6 +808,7 @@ async function loadUsers() {
 
 async function createUser() {
     const username = document.getElementById('newUsername').value.trim();
+    const displayName = document.getElementById('newDisplayName').value.trim();
     const password = document.getElementById('newPassword').value;
     const role = document.getElementById('newUserRole').value;
     const msg = document.getElementById('createUserMsg');
@@ -848,7 +842,7 @@ async function createUser() {
         const resp = await fetch(`${API}/api/users`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password, role }),
+            body: JSON.stringify({ username, password, role, name: displayName }),
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -861,6 +855,7 @@ async function createUser() {
         msg.style.color = 'var(--green)';
         msg.textContent = `User "${data.user.username}" created as ${data.user.role}`;
         document.getElementById('newUsername').value = '';
+        document.getElementById('newDisplayName').value = '';
         document.getElementById('newPassword').value = '';
         loadUsers();
     } catch (err) {
@@ -3159,15 +3154,7 @@ function goToSocialChat() {
 }
 
 function goToSocial() {
-    closeMobileMenu();
-    document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
-    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-    var socialBtn = document.querySelector('.nav-btn[data-panel="social"]');
-    if (socialBtn) socialBtn.classList.add('active');
-    document.getElementById('panel-social').classList.add('active');
-    currentPanel = 'social';
-    stopPortfolioRefresh();
-    updateFloatingChatBtn();
+    switchPanel('social');
 }
 
 // --- Chat Sidebar ---

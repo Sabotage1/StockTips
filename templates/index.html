@@ -33,29 +33,29 @@
         </button>
         <div class="mobile-menu-wrap" id="mobileMenuWrap">
             <nav class="nav" id="mainNav">
-                <button class="nav-btn active" data-panel="analyze">
+                <button class="nav-btn active" data-panel="analyze" onclick="switchPanel('analyze')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     Analyze
                 </button>
-                <button class="nav-btn" data-panel="portfolio">
+                <button class="nav-btn" data-panel="portfolio" onclick="switchPanel('portfolio')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><path d="M12 4v6"/></svg>
                     Portfolio
                 </button>
-                <button class="nav-btn" data-panel="history">
+                <button class="nav-btn" data-panel="history" onclick="switchPanel('history')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     History
                 </button>
                 {% if user_role == 'admin' %}
-                <button class="nav-btn" data-panel="usage" id="navUsage">
+                <button class="nav-btn" data-panel="usage" id="navUsage" onclick="switchPanel('usage')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="2" width="4" height="19" rx="1"/></svg>
                     API Usage
                 </button>
-                <button class="nav-btn" data-panel="users" id="navUsers">
+                <button class="nav-btn" data-panel="users" id="navUsers" onclick="switchPanel('users')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                     Users
                 </button>
                 {% endif %}
-                <button class="nav-btn nav-btn-friends" data-panel="social" id="navSocial">
+                <button class="nav-btn nav-btn-friends" data-panel="social" id="navSocial" onclick="switchPanel('social')">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
                     Friends
                     <span class="nav-badge" id="socialBadge" style="display:none">0</span>
@@ -310,7 +310,8 @@
             <div class="card-title" style="margin-bottom:16px">Create New User</div>
             <div style="display:flex;flex-direction:column;gap:12px">
                 <input type="text" id="newUsername" placeholder="Username" class="filter-input" style="width:100%">
-                <input type="password" id="newPassword" placeholder="Password (min 4 chars)" class="filter-input" style="width:100%">
+                <input type="text" id="newDisplayName" placeholder="Display Name (optional)" class="filter-input" style="width:100%">
+                <input type="password" id="newPassword" placeholder="Password (min 8 chars)" class="filter-input" style="width:100%">
                 <select id="newUserRole" class="filter-select" style="width:100%">
                     <option value="viewer">Viewer (search & view only)</option>
                     <option value="admin">Admin (full access)</option>
@@ -329,6 +330,7 @@
                     <thead>
                         <tr>
                             <th>Username</th>
+                            <th>Name</th>
                             <th>User ID</th>
                             <th>Role</th>
                             <th>Created</th>
@@ -336,7 +338,7 @@
                         </tr>
                     </thead>
                     <tbody id="usersBody">
-                        <tr><td colspan="5" class="empty-row">Loading...</td></tr>
+                        <tr><td colspan="6" class="empty-row">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
