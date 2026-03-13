@@ -2,6 +2,9 @@ const API = '';
 let currentPanel = 'analyze';
 let currentUserRole = 'viewer';
 
+// Parse server timestamps (UTC) correctly so toLocaleString converts to browser timezone
+function utcDate(s) { return s ? new Date(s.endsWith('Z') ? s : s + 'Z') : null; }
+
 // Mobile hamburger menu
 function toggleMobileMenu() {
     var wrap = document.getElementById('mobileMenuWrap');
@@ -451,7 +454,7 @@ async function loadHistory() {
         historyBody.innerHTML = records.map(r => {
             const cls = r.recommendation.startsWith('BUY') ? 'badge-buy' : r.recommendation.startsWith('SELL') ? 'badge-sell' : 'badge-hold';
             const src = r.source === 'telegram' ? 'telegram' : '';
-            const d = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+            const d = r.created_at ? utcDate(r.created_at).toLocaleString() : '';
             const p = r.current_price ? `$${r.current_price.toFixed(2)}` : 'N/A';
             const requestedBy = r.source === 'telegram' ? (r.telegram_user || '') : (r.web_user || '');
             return `<tr onclick="showDetail(${parseInt(r.id)})">
@@ -484,7 +487,7 @@ async function showDetail(id) {
         const riskClass = data.risk_level === 'LOW' ? 'badge-high' : data.risk_level === 'HIGH' ? 'badge-low' : 'badge-medium';
         const price = data.current_price ? `$${data.current_price.toFixed(2)}` : 'N/A';
         const priceColor = rec.startsWith('BUY') ? 'var(--green)' : rec.startsWith('SELL') ? 'var(--red)' : 'var(--yellow)';
-        const date = data.created_at ? new Date(data.created_at).toLocaleString() : '';
+        const date = data.created_at ? utcDate(data.created_at).toLocaleString() : '';
 
         // Pattern banner
         const patternHtml = data.chart_pattern && data.chart_pattern !== 'None detected' && data.chart_pattern !== 'N/A'
@@ -795,7 +798,7 @@ async function loadUsers() {
             return;
         }
         tbody.innerHTML = users.map(u => {
-            const d = u.created_at ? new Date(u.created_at).toLocaleString() : '';
+            const d = u.created_at ? utcDate(u.created_at).toLocaleString() : '';
             const roleCls = u.role === 'admin' ? 'badge-buy' : 'badge-info';
             const deleteBtn = u.role === 'admin' ? '' :
                 `<button class="btn-delete-row" onclick="deleteUserAccount(${parseInt(u.id)}, '${escapeHtml(u.username.replace(/'/g, "\\'"))}')" title="Delete">&times;</button>`;
@@ -1648,7 +1651,7 @@ function renderAnalysisModal(data) {
     var riskClass = data.risk_level === 'LOW' ? 'badge-high' : data.risk_level === 'HIGH' ? 'badge-low' : 'badge-medium';
     var price = data.current_price ? '$' + data.current_price.toFixed(2) : 'N/A';
     var priceColor = rec.startsWith('BUY') ? 'var(--green)' : rec.startsWith('SELL') ? 'var(--red)' : 'var(--yellow)';
-    var date = data.created_at ? new Date(data.created_at).toLocaleString() : '';
+    var date = data.created_at ? utcDate(data.created_at).toLocaleString() : '';
 
     // Entry price & P&L banner
     var entryHtml = '';
@@ -2287,7 +2290,7 @@ async function loadTransactionHistory(itemId) {
             '<th>Date</th><th>Action</th><th>Shares</th><th>Price</th><th>Total</th><th>Avg Cost</th><th>P&L</th>' +
             '</tr></thead><tbody>';
         txns.forEach(function(t) {
-            var d = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+            var d = t.created_at ? utcDate(t.created_at).toLocaleDateString() : '';
             var actionCls = t.action === 'BUY' ? 'txn-buy' : 'txn-sell';
             var pnlStr = '';
             if (t.action === 'SELL' && t.realized_pnl != null) {
@@ -2717,7 +2720,7 @@ async function loadConversations() {
 
 function formatTime(isoStr) {
     if (!isoStr) return '';
-    var d = new Date(isoStr);
+    var d = utcDate(isoStr);
     var now = new Date();
     var diffMs = now - d;
     var diffMins = Math.floor(diffMs / 60000);
@@ -2793,7 +2796,7 @@ async function loadChatMessages() {
                 return renderTipBubble(item);
             }
             var isSent = _currentUserId ? item.sender_id === _currentUserId : item.sender_id !== _chatFriendId;
-            var timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            var timeStr = item.created_at ? utcDate(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             var deleteBtn = isSent ? '<button class="chat-delete-btn" onclick="event.stopPropagation();deleteChatMessage(' + item.id + ')" title="Delete">&times;</button>' : '';
             return '<div class="chat-bubble-wrap ' + (isSent ? 'sent' : 'received') + '">' +
                 '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
@@ -2810,7 +2813,7 @@ async function loadChatMessages() {
 
 function renderTipBubble(tip) {
     var isSent = _currentUserId ? tip.sender_id === _currentUserId : tip.sender_id !== _chatFriendId;
-    var timeStr = tip.created_at ? new Date(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    var timeStr = tip.created_at ? utcDate(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     var expired = isTipExpired(tip);
     var expiryStr = formatExpiry(tip);
     var details = '';
@@ -2947,7 +2950,7 @@ async function viewTipDetail(tipId) {
                 '<div class="result-top"><span class="result-ticker">' + escapeHtml(tip.ticker) + '</span></div>' +
                 '<div class="badges"><span class="badge badge-info">Stock Tip</span>' + expiryBadge + '</div>' +
                 '<p style="color:var(--text2);font-size:13px;margin-top:8px">From: ' + escapeHtml(tip.sender_display_name || tip.sender_username) + ' &rarr; ' + escapeHtml(tip.receiver_display_name || tip.receiver_username) + '</p>' +
-                '<p style="color:var(--text3);font-size:12px">' + (tip.created_at ? new Date(tip.created_at).toLocaleString() : '') + '</p>' +
+                '<p style="color:var(--text3);font-size:12px">' + (tip.created_at ? utcDate(tip.created_at).toLocaleString() : '') + '</p>' +
             '</div>' +
             (details ? '<div class="card" style="margin-top:16px"><div class="card-title">Trade Setup</div>' + details + '</div>' : '') +
             (tip.message ? '<div class="card" style="margin-top:12px"><div class="card-title">Message</div><div class="full-analysis">' + escapeHtml(tip.message) + '</div></div>' : '') +
@@ -3286,7 +3289,7 @@ async function loadSidebarChatMessages() {
                 return renderSidebarTipBubble(item);
             }
             var isSent = _currentUserId ? item.sender_id === _currentUserId : item.sender_id !== _sidebarChatFriendId;
-            var timeStr = item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            var timeStr = item.created_at ? utcDate(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             var deleteBtn = isSent ? '<button class="chat-delete-btn" onclick="event.stopPropagation();deleteChatMessage(' + item.id + ')" title="Delete">&times;</button>' : '';
             return '<div class="chat-bubble-wrap ' + (isSent ? 'sent' : 'received') + '">' +
                 '<div class="chat-bubble ' + (isSent ? 'sent' : 'received') + '">' +
@@ -3303,7 +3306,7 @@ async function loadSidebarChatMessages() {
 
 function renderSidebarTipBubble(tip) {
     var isSent = _currentUserId ? tip.sender_id === _currentUserId : tip.sender_id !== _sidebarChatFriendId;
-    var timeStr = tip.created_at ? new Date(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    var timeStr = tip.created_at ? utcDate(tip.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     var expired = isTipExpired(tip);
     var expiryStr = formatExpiry(tip);
     var details = '';
