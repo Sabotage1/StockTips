@@ -69,6 +69,7 @@ body {
 }
 .logo em { font-style: normal; color: var(--accent2); }
 
+.mobile-menu-wrap { display: contents; }
 .nav { display: flex; gap: 4px; align-items: center; flex: 1; justify-content: center; }
 .nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .nav-btn {
@@ -1175,23 +1176,168 @@ body {
     transition: transform 0.15s ease;
 }
 
+/* === Hamburger Button === */
+.hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 36px;
+    height: 36px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    transition: background 0.2s;
+    z-index: 110;
+}
+.hamburger:hover { background: var(--surface2); }
+.hamburger span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+    transition: all 0.3s ease;
+}
+.hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger.open span:nth-child(2) { opacity: 0; }
+.hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* Mobile menu overlay */
+.mobile-menu-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: 60px;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+}
+.mobile-menu-overlay.active { display: block; }
+
 /* === Responsive === */
 @media (max-width: 768px) {
-    .header-inner { padding: 0 16px; }
+    .hamburger { display: flex; }
+
+    .header-inner { padding: 0 16px; position: relative; }
+
+    .mobile-menu-wrap {
+        display: none;
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        background: rgba(6,6,11,0.97);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border-bottom: 1px solid var(--border);
+        padding: 8px 16px 16px;
+        z-index: 105;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+    .mobile-menu-wrap.mobile-open { display: flex; }
+
+    .nav {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: unset;
+        justify-content: flex-start;
+    }
+    .nav .nav-btn {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 12px 16px;
+        font-size: 15px;
+        border-radius: var(--radius-sm);
+    }
+
+    .nav-right {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border);
+    }
+    .nav-right .nav-btn {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 12px 16px;
+        font-size: 15px;
+        border-radius: var(--radius-sm);
+    }
+    .nav-right .version-tag { align-self: flex-start; margin-left: 16px; }
+
     .main { padding: 16px; }
+
+    /* Hero */
     .hero { padding: 32px 0 24px; }
-    .hero-title { font-size: 24px; }
-    .search-wrap input { padding: 14px 110px 14px 44px; font-size: 14px; }
-    .btn-go { padding: 8px 16px; }
+    .hero-title { font-size: 22px; }
+    .hero-sub { font-size: 13px; }
+    #greetingLine { font-size: 24px !important; }
+    .search-wrap { margin-top: 20px; }
+    .search-wrap input { padding: 14px 60px 14px 44px; font-size: 14px; }
+    .btn-go { padding: 8px 14px; }
     .btn-go .btn-text { display: none; }
+    .price-input-wrap input { width: 100%; }
+    .hero-chips { gap: 6px; }
+    .chip { padding: 5px 10px; font-size: 11px; }
+
+    /* Stats */
     .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .stat-value { font-size: 22px; }
+    .stat-card { padding: 14px; }
+
+    /* Result cards */
     .cards-grid { grid-template-columns: 1fr; }
-    .result-top { flex-direction: column; }
+    .result-top { flex-direction: column; gap: 8px; }
     .result-ticker { font-size: 24px; }
     .result-price { font-size: 22px; }
+    .result-hero { padding: 18px; }
+    .result-summary { font-size: 14px; padding: 12px 14px; }
     .metric-grid { grid-template-columns: 1fr; }
     .setup-grid { grid-template-columns: 1fr; }
     .breakout-box { grid-template-columns: 1fr 1fr; }
+    .analysis-card { padding: 16px; }
+    .chart-card { padding: 12px; }
+    .news-card { padding: 16px; }
+
+    /* History */
+    .history-bar { flex-direction: column; }
+    .filter-input, .filter-select { width: 100%; }
+    .btn-clear-all { margin-left: 0; width: 100%; text-align: center; }
+    .btn-global-history { width: 100%; text-align: center; }
+    .history-table th, .history-table td { padding: 10px 10px; font-size: 12px; white-space: nowrap; }
+
+    /* Portfolio */
+    .portfolio-top-row { flex-direction: column; }
+    .portfolio-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .portfolio-pie-wrap { min-width: unset; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
+    .portfolio-add-form { flex-direction: column; gap: 8px; }
+    .pf-input-ticker, .pf-input-num { width: 100%; }
+    .pf-add-btn { position: static; transform: none; width: 100%; border-radius: var(--radius-sm); justify-content: center; }
+    #portfolioTable { font-size: 11px; }
+    #portfolioTable th, #portfolioTable td { padding: 8px 6px; }
+    .portfolio-status-bar { flex-direction: column; gap: 8px; align-items: flex-start; }
+    .stock-detail-grid { grid-template-columns: 1fr; }
+    .stock-detail-header { flex-direction: column; }
+    .stock-detail-right { text-align: left; }
+    .stock-detail-entry-row { flex-direction: column; gap: 8px; }
+
+    /* Settings */
+    .settings-panel { grid-template-columns: 1fr; }
+
+    /* Chat */
+    .chat-messages { height: 300px; }
+
+    /* Modal */
+    .modal-overlay { padding: 16px 12px; }
+    .modal { padding: 20px 16px; }
+
+    /* Share page */
     .share-page { padding: 16px 12px; }
     .share-page .result-hero { padding: 18px; }
     .share-page .trading-setup { padding: 16px; }
@@ -1199,18 +1345,13 @@ body {
     .share-page .chart-card { padding: 12px; }
     .share-page .analysis-card { padding: 16px; }
     .share-page .news-card { padding: 16px; }
-    .portfolio-top-row { flex-direction: column; }
-    .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
-    .portfolio-pie-wrap { min-width: unset; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
-    .portfolio-add-form { flex-direction: column; }
-    .pf-input-ticker, .pf-input-num { width: 100%; }
-    #portfolioTable { font-size: 12px; }
-    .stock-detail-grid { grid-template-columns: 1fr; }
-    .stock-detail-header { flex-direction: column; }
-    .stock-detail-right { text-align: left; }
-    .stock-detail-entry-row { flex-direction: column; gap: 8px; }
-    .settings-panel { grid-template-columns: 1fr; }
-    .chat-messages { height: 350px; }
+
+    /* User management */
+    .user-mgmt-card { padding: 16px; }
+
+    /* Social */
+    .social-sub-nav { width: 100%; }
+    .friends-add-section { max-width: 100%; }
 }
 
 /* === Nav Badge === */
@@ -1915,6 +2056,16 @@ body {
 }
 @media (max-width: 480px) {
     .chat-sidebar { width: 100%; }
+    .main { padding: 12px; }
+    .hero-title { font-size: 20px; }
+    .stats-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-value { font-size: 18px; }
+    .stat-card { padding: 10px; }
+    .portfolio-summary { grid-template-columns: 1fr; }
+    .breakout-box { grid-template-columns: 1fr; }
+    .badges { gap: 4px; }
+    .badge { font-size: 10px; padding: 4px 10px; }
+    .modal { padding: 16px 12px; }
 }
 
 /* Portfolio tip button */

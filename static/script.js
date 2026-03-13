@@ -2,6 +2,24 @@ const API = '';
 let currentPanel = 'analyze';
 let currentUserRole = 'viewer';
 
+// Mobile hamburger menu
+function toggleMobileMenu() {
+    var wrap = document.getElementById('mobileMenuWrap');
+    var btn = document.getElementById('hamburgerBtn');
+    var overlay = document.getElementById('mobileMenuOverlay');
+    var isOpen = btn.classList.toggle('open');
+    wrap.classList.toggle('mobile-open', isOpen);
+    overlay.classList.toggle('active', isOpen);
+}
+function closeMobileMenu() {
+    var btn = document.getElementById('hamburgerBtn');
+    var wrap = document.getElementById('mobileMenuWrap');
+    var overlay = document.getElementById('mobileMenuOverlay');
+    if (btn) btn.classList.remove('open');
+    if (wrap) wrap.classList.remove('mobile-open');
+    if (overlay) overlay.classList.remove('active');
+}
+
 // --- XSS Protection ---
 function escapeHtml(str) {
     if (str == null) return '';
@@ -42,6 +60,7 @@ const modalContent = document.getElementById('modalContent');
 // Nav
 document.querySelectorAll('.nav-btn[data-panel]').forEach(btn => {
     btn.addEventListener('click', () => {
+        closeMobileMenu();
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentPanel = btn.dataset.panel;
@@ -129,6 +148,7 @@ async function analyze() {
 }
 
 function goToAnalyze(ticker, purchasePrice) {
+    closeMobileMenu();
     // Switch to analyze panel
     document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
     document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
@@ -3085,6 +3105,7 @@ function goToSocialChat() {
 }
 
 function goToSocial() {
+    closeMobileMenu();
     document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
     document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
     var socialBtn = document.querySelector('.nav-btn[data-panel="social"]');
