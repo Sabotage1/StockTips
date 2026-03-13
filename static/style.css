@@ -52,7 +52,7 @@ body {
 
 /* === Header === */
 .header {
-    position: sticky; top: 0; z-index: 100;
+    position: sticky; top: 0; z-index: 106;
     background: rgba(6,6,11,0.7);
     backdrop-filter: blur(24px) saturate(1.4);
     -webkit-backdrop-filter: blur(24px) saturate(1.4);
