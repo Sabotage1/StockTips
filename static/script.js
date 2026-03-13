@@ -3007,11 +3007,11 @@ function prefillTipFields(ticker, shareToken, breakoutPrice, stopLoss) {
     document.getElementById('tipShareToken').value = shareToken || '';
     if (breakoutPrice) {
         var bp = String(breakoutPrice).replace(/[^0-9.]/g, '');
-        if (bp && !isNaN(parseFloat(bp))) document.getElementById('tipBreakout').value = Math.round(parseFloat(bp));
+        if (bp && !isNaN(parseFloat(bp))) document.getElementById('tipBreakout').value = parseFloat(bp).toFixed(2);
     }
     if (stopLoss) {
         var sl = String(stopLoss).replace(/[^0-9.]/g, '');
-        if (sl && !isNaN(parseFloat(sl))) document.getElementById('tipStopLoss').value = Math.round(parseFloat(sl));
+        if (sl && !isNaN(parseFloat(sl))) document.getElementById('tipStopLoss').value = parseFloat(sl).toFixed(2);
     }
 }
 
