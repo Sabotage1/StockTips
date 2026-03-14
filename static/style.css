@@ -1083,11 +1083,29 @@ body {
 }
 
 .pf-settings-toggle {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; gap: 8px;
     padding: 6px 0;
 }
 .pf-settings-toggle-label {
     font-size: 13px; color: var(--text); font-weight: 500;
+    flex: 1;
+}
+.pf-col-drag-handle {
+    cursor: grab; color: var(--text3); font-size: 14px;
+    padding: 2px 4px; user-select: none; flex-shrink: 0;
+    transition: color 0.15s;
+}
+.pf-col-drag-handle:hover { color: var(--text); }
+.pf-col-drag-item {
+    border-radius: 6px; padding: 6px 8px;
+    transition: background 0.15s, opacity 0.15s;
+}
+.pf-col-drag-item.pf-col-dragging {
+    opacity: 0.4; background: var(--surface2);
+}
+.pf-col-drag-item.pf-col-drag-over {
+    border-top: 2px solid var(--accent);
+    padding-top: 4px;
 }
 
 /* Pure CSS toggle switch */

@@ -1560,6 +1560,7 @@ var COLUMN_LABELS = {
     mkt_value: 'Mkt Value', pct_port: '% Portfolio', pnl: 'P&L', pnl_pct: 'P&L %',
     day_pnl: 'Day P&L', day_pnl_pct: 'Day P&L %', day_pct: 'Day %', signals: 'Signals', actions: 'Actions'
 };
+var DEFAULT_COLUMN_ORDER = ['ticker','shares','avg_cost','price','mkt_value','pct_port','pnl','pnl_pct','day_pnl','day_pnl_pct','day_pct','signals','actions'];
 var CARD_LABELS = {
     total_value: 'Total Value', total_cost: 'Total Cost', total_pnl: 'Unrealized P&L',
     total_return: 'Unrealized P&L %', day_pnl: 'Day P&L', realized_pnl: 'Realized P&L'
@@ -1579,6 +1580,13 @@ function toggleSettingsPanel() {
     }
 }
 
+function getColumnOrder() {
+    if (userSettings && userSettings.column_order && userSettings.column_order.length) {
+        return userSettings.column_order;
+    }
+    return DEFAULT_COLUMN_ORDER;
+}
+
 function renderSettingsPanel() {
     if (!userSettings) return;
     var colsEl = document.getElementById('settingsColumns');
@@ -1586,15 +1594,17 @@ function renderSettingsPanel() {
     var chartEl = document.getElementById('settingsChart');
     if (!colsEl || !cardsEl || !chartEl) return;
 
-    // Columns toggles
-    var colKeys = Object.keys(COLUMN_LABELS);
+    // Columns toggles (in saved order, with drag handles)
+    var colKeys = getColumnOrder();
     colsEl.innerHTML = colKeys.map(function(key) {
         var checked = userSettings.visible_columns[key] !== false;
-        return '<div class="pf-settings-toggle">' +
+        return '<div class="pf-settings-toggle pf-col-drag-item" draggable="true" data-col-key="' + key + '">' +
+            '<span class="pf-col-drag-handle" title="Drag to reorder">&#x2630;</span>' +
             '<span class="pf-settings-toggle-label">' + COLUMN_LABELS[key] + '</span>' +
             '<label class="toggle-switch"><input type="checkbox" data-type="col" data-key="' + key + '"' + (checked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
             '</div>';
     }).join('');
+    initColumnDragAndDrop();
 
     // Cards toggles
     var cardKeys = Object.keys(CARD_LABELS);
@@ -1625,8 +1635,10 @@ function onSettingToggle(el) {
     else if (type === 'chart') userSettings.show_pie_chart = val;
 
     applySettings();
+    saveSettingsDebounced();
+}
 
-    // Debounced save
+function saveSettingsDebounced() {
     if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(function() {
         fetch(API + '/api/settings', {
@@ -1637,8 +1649,142 @@ function onSettingToggle(el) {
     }, 300);
 }
 
+// --- Column Drag & Drop in Settings Panel ---
+var _colDrag = { dragEl: null };
+
+function initColumnDragAndDrop() {
+    var container = document.getElementById('settingsColumns');
+    if (!container) return;
+
+    container.addEventListener('dragstart', function(e) {
+        var item = e.target.closest('.pf-col-drag-item');
+        if (!item) return;
+        _colDrag.dragEl = item;
+        item.classList.add('pf-col-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+    });
+
+    container.addEventListener('dragend', function(e) {
+        var item = e.target.closest('.pf-col-drag-item');
+        if (item) item.classList.remove('pf-col-dragging');
+        _colDrag.dragEl = null;
+        container.querySelectorAll('.pf-col-drag-over').forEach(function(el) {
+            el.classList.remove('pf-col-drag-over');
+        });
+    });
+
+    container.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var target = e.target.closest('.pf-col-drag-item');
+        if (!target || target === _colDrag.dragEl) return;
+        container.querySelectorAll('.pf-col-drag-over').forEach(function(el) {
+            el.classList.remove('pf-col-drag-over');
+        });
+        target.classList.add('pf-col-drag-over');
+    });
+
+    container.addEventListener('drop', function(e) {
+        e.preventDefault();
+        var target = e.target.closest('.pf-col-drag-item');
+        if (!target || !_colDrag.dragEl || target === _colDrag.dragEl) return;
+        // Determine insert position
+        var items = Array.from(container.querySelectorAll('.pf-col-drag-item'));
+        var dragIdx = items.indexOf(_colDrag.dragEl);
+        var dropIdx = items.indexOf(target);
+        if (dragIdx < dropIdx) {
+            container.insertBefore(_colDrag.dragEl, target.nextSibling);
+        } else {
+            container.insertBefore(_colDrag.dragEl, target);
+        }
+        target.classList.remove('pf-col-drag-over');
+        // Update column order from DOM
+        var newOrder = Array.from(container.querySelectorAll('.pf-col-drag-item')).map(function(el) {
+            return el.getAttribute('data-col-key');
+        });
+        userSettings.column_order = newOrder;
+        applySettings();
+        saveSettingsDebounced();
+    });
+
+    // Touch drag support
+    var _touch = { dragEl: null, clone: null, startY: 0, startX: 0 };
+
+    container.addEventListener('touchstart', function(e) {
+        var handle = e.target.closest('.pf-col-drag-handle');
+        if (!handle) return;
+        var item = handle.closest('.pf-col-drag-item');
+        if (!item) return;
+        _touch.dragEl = item;
+        _touch.startY = e.touches[0].clientY;
+        _touch.startX = e.touches[0].clientX;
+        item.classList.add('pf-col-dragging');
+    }, { passive: true });
+
+    container.addEventListener('touchmove', function(e) {
+        if (!_touch.dragEl) return;
+        e.preventDefault();
+        var touch = e.touches[0];
+        var target = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (target) target = target.closest('.pf-col-drag-item');
+        container.querySelectorAll('.pf-col-drag-over').forEach(function(el) {
+            el.classList.remove('pf-col-drag-over');
+        });
+        if (target && target !== _touch.dragEl) {
+            target.classList.add('pf-col-drag-over');
+        }
+    }, { passive: false });
+
+    container.addEventListener('touchend', function(e) {
+        if (!_touch.dragEl) return;
+        var touch = e.changedTouches[0];
+        var target = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (target) target = target.closest('.pf-col-drag-item');
+        if (target && target !== _touch.dragEl) {
+            var items = Array.from(container.querySelectorAll('.pf-col-drag-item'));
+            var dragIdx = items.indexOf(_touch.dragEl);
+            var dropIdx = items.indexOf(target);
+            if (dragIdx < dropIdx) {
+                container.insertBefore(_touch.dragEl, target.nextSibling);
+            } else {
+                container.insertBefore(_touch.dragEl, target);
+            }
+        }
+        _touch.dragEl.classList.remove('pf-col-dragging');
+        container.querySelectorAll('.pf-col-drag-over').forEach(function(el) {
+            el.classList.remove('pf-col-drag-over');
+        });
+        // Update column order from DOM
+        var newOrder = Array.from(container.querySelectorAll('.pf-col-drag-item')).map(function(el) {
+            return el.getAttribute('data-col-key');
+        });
+        userSettings.column_order = newOrder;
+        applySettings();
+        saveSettingsDebounced();
+        _touch.dragEl = null;
+    });
+}
+
 function applySettings() {
     if (!userSettings) return;
+
+    // Apply column order
+    var order = getColumnOrder();
+    var theadRow = document.querySelector('#portfolioTable thead tr');
+    if (theadRow) {
+        order.forEach(function(key) {
+            var th = theadRow.querySelector('th[data-col="' + key + '"]');
+            if (th) theadRow.appendChild(th);
+        });
+    }
+    var rows = document.querySelectorAll('#portfolioTable tbody tr');
+    rows.forEach(function(tr) {
+        order.forEach(function(key) {
+            var td = tr.querySelector('td[data-col="' + key + '"]');
+            if (td) tr.appendChild(td);
+        });
+    });
 
     // Apply column visibility
     var cols = userSettings.visible_columns || {};

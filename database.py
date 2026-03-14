@@ -864,6 +864,10 @@ DEFAULT_SETTINGS = {
         "total_return": True, "day_pnl": True, "realized_pnl": True,
     },
     "show_pie_chart": True,
+    "column_order": [
+        "ticker", "shares", "avg_cost", "price", "mkt_value", "pct_port",
+        "pnl", "pnl_pct", "day_pnl", "day_pnl_pct", "day_pct", "signals", "actions",
+    ],
 }
 
 
@@ -881,6 +885,15 @@ def get_user_settings(user_id: int) -> dict:
                     result[key].update(stored[key])
             if "show_pie_chart" in stored:
                 result["show_pie_chart"] = stored["show_pie_chart"]
+            if "column_order" in stored and isinstance(stored["column_order"], list):
+                # Use stored order but ensure all default columns are present
+                default_cols = result["column_order"]
+                stored_order = [c for c in stored["column_order"] if c in default_cols]
+                # Append any new columns not in stored order
+                for c in default_cols:
+                    if c not in stored_order:
+                        stored_order.append(c)
+                result["column_order"] = stored_order
         return result
     finally:
         db.close()
