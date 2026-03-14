@@ -1169,6 +1169,12 @@ body {
 #portfolioTable tbody tr:hover td {
     background: var(--surface2-hover-solid);
 }
+#portfolioTable th.th-dragging {
+    opacity: 0.4;
+}
+#portfolioTable th.th-drag-over {
+    border-left: 2px solid var(--accent);
+}
 
 /* === Drag and Drop === */
 #portfolioTable tbody tr[data-item-id] td:first-child {

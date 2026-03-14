@@ -1150,6 +1150,7 @@ async function refreshPortfolioPrices() {
         renderPortfolioPieChart(portfolioData.items);
         applySettings();
         initDragAndDrop();
+        initTableHeaderDrag();
     } catch (err) {
         console.error('Portfolio refresh error:', err);
     }
@@ -1654,7 +1655,8 @@ var _colDrag = { dragEl: null };
 
 function initColumnDragAndDrop() {
     var container = document.getElementById('settingsColumns');
-    if (!container) return;
+    if (!container || container._colDragInit) return;
+    container._colDragInit = true;
 
     container.addEventListener('dragstart', function(e) {
         var item = e.target.closest('.pf-col-drag-item');
@@ -1763,6 +1765,76 @@ function initColumnDragAndDrop() {
         applySettings();
         saveSettingsDebounced();
         _touch.dragEl = null;
+    });
+}
+
+// --- Column Header Drag & Drop on Portfolio Table ---
+var _thDrag = { dragEl: null, init: false };
+
+function initTableHeaderDrag() {
+    var theadRow = document.querySelector('#portfolioTable thead tr');
+    if (!theadRow || _thDrag.init) return;
+    _thDrag.init = true;
+
+    // Make headers draggable
+    theadRow.querySelectorAll('th[data-col]').forEach(function(th) {
+        th.draggable = true;
+        th.style.cursor = 'grab';
+    });
+
+    theadRow.addEventListener('dragstart', function(e) {
+        var th = e.target.closest('th[data-col]');
+        if (!th) return;
+        _thDrag.dragEl = th;
+        th.classList.add('th-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+    });
+
+    theadRow.addEventListener('dragend', function(e) {
+        if (_thDrag.dragEl) _thDrag.dragEl.classList.remove('th-dragging');
+        _thDrag.dragEl = null;
+        theadRow.querySelectorAll('.th-drag-over').forEach(function(el) {
+            el.classList.remove('th-drag-over');
+        });
+    });
+
+    theadRow.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        var th = e.target.closest('th[data-col]');
+        if (!th || th === _thDrag.dragEl) return;
+        theadRow.querySelectorAll('.th-drag-over').forEach(function(el) {
+            el.classList.remove('th-drag-over');
+        });
+        th.classList.add('th-drag-over');
+    });
+
+    theadRow.addEventListener('drop', function(e) {
+        e.preventDefault();
+        var target = e.target.closest('th[data-col]');
+        if (!target || !_thDrag.dragEl || target === _thDrag.dragEl) return;
+
+        var ths = Array.from(theadRow.querySelectorAll('th[data-col]'));
+        var dragIdx = ths.indexOf(_thDrag.dragEl);
+        var dropIdx = ths.indexOf(target);
+        if (dragIdx < dropIdx) {
+            theadRow.insertBefore(_thDrag.dragEl, target.nextSibling);
+        } else {
+            theadRow.insertBefore(_thDrag.dragEl, target);
+        }
+        target.classList.remove('th-drag-over');
+
+        // Read new order from DOM
+        var newOrder = Array.from(theadRow.querySelectorAll('th[data-col]')).map(function(th) {
+            return th.getAttribute('data-col');
+        });
+        userSettings.column_order = newOrder;
+        applySettings();
+        saveSettingsDebounced();
+        // Re-render settings panel if open
+        var panel = document.getElementById('settingsPanel');
+        if (panel && panel.style.display !== 'none') renderSettingsPanel();
     });
 }
 
