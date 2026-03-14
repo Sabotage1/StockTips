@@ -65,8 +65,7 @@ function switchPanel(panel) {
     closeMobileMenu();
     currentPanel = panel;
     document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
-    var activeBtn = document.querySelector('.nav-btn[data-panel="' + panel + '"]');
-    if (activeBtn) activeBtn.classList.add('active');
+    document.querySelectorAll('.nav-btn[data-panel="' + panel + '"]').forEach(function(b) { b.classList.add('active'); });
     document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
     var panelEl = document.getElementById('panel-' + panel);
     if (panelEl) panelEl.classList.add('active');
