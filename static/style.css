@@ -324,6 +324,38 @@ body {
     border-radius: 10px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
 }
 
+/* Interactive Chart */
+.interactive-chart { width: 100%; min-height: 200px; }
+.ichart-wrap {
+    position: relative; width: 100%; border-radius: var(--radius-sm);
+    overflow: hidden; background: #0f1117;
+}
+.ichart-canvas {
+    display: block; width: 100%; cursor: crosshair;
+}
+.ichart-tooltip {
+    position: absolute; pointer-events: none; z-index: 10;
+    background: rgba(15,17,23,0.95); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 10px 14px; min-width: 185px;
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.ichart-tt-date {
+    font-weight: 700; color: var(--text); margin-bottom: 6px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+}
+.ichart-tt-row {
+    display: flex; justify-content: space-between; gap: 16px;
+    padding: 2px 0; color: var(--text2);
+}
+.ichart-tt-row span:last-child { color: var(--text); font-weight: 500; }
+.ichart-legend {
+    display: flex; gap: 16px; padding: 8px 12px;
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    color: var(--text2);
+}
+
 .analysis-card {
     margin-top: 20px;
     background: var(--surface); border: 1px solid var(--border);

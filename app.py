@@ -535,6 +535,78 @@ async def api_analysis_detail(request: Request, analysis_id: int):
     })
 
 
+@app.get("/api/chart-data/{ticker}")
+async def api_chart_data(request: Request, ticker: str):
+    """Return OHLCV + SMA data as JSON for interactive charting."""
+    ensure_db()
+    ticker = ticker.strip().upper()
+    if not ticker or len(ticker) > 10:
+        return JSONResponse({"error": "Invalid ticker"}, status_code=400)
+    try:
+        from chart_generator import _fetch_chart_data
+        df = _fetch_chart_data(ticker, period="6mo")
+        if df is None or len(df) < 5:
+            return JSONResponse({"error": "No data"}, status_code=404)
+
+        # Compute SMAs from longer data
+        df_long = _fetch_chart_data(ticker, period="1y")
+        sma20 = df["Close"].rolling(20).mean()
+        sma150 = None
+        sma200 = None
+        if df_long is not None and len(df_long) >= 150:
+            sma150_full = df_long["Close"].rolling(150).mean()
+            sma150 = sma150_full.reindex(df.index)
+        if df_long is not None and len(df_long) >= 200:
+            sma200_full = df_long["Close"].rolling(200).mean()
+            sma200 = sma200_full.reindex(df.index)
+
+        # Look up analysis overlays
+        from database import get_recent_analysis
+        session = _get_session(request)
+        web_user = session["user"] if session else None
+        overlays = {}
+        cached = get_recent_analysis(ticker, max_age_minutes=120, web_user=web_user)
+        if cached and cached.analysis_json:
+            try:
+                ad = json.loads(cached.analysis_json)
+                for k in ("support_levels", "resistance_levels", "breakout_level",
+                          "breakout_direction", "stop_loss", "price_target_short",
+                          "price_target_long", "expected_gain_pct", "expected_loss_pct",
+                          "risk_reward_ratio"):
+                    if k in ad:
+                        overlays[k] = ad[k]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        candles = []
+        for dt, row in df.iterrows():
+            entry = {
+                "date": dt.strftime("%Y-%m-%d"),
+                "open": round(row["Open"], 2),
+                "high": round(row["High"], 2),
+                "low": round(row["Low"], 2),
+                "close": round(row["Close"], 2),
+                "volume": int(row["Volume"]),
+            }
+            s20 = sma20.get(dt)
+            if s20 is not None and not (isinstance(s20, float) and s20 != s20):
+                entry["sma20"] = round(float(s20), 2)
+            if sma150 is not None:
+                s150 = sma150.get(dt)
+                if s150 is not None and not (isinstance(s150, float) and s150 != s150):
+                    entry["sma150"] = round(float(s150), 2)
+            if sma200 is not None:
+                s200 = sma200.get(dt)
+                if s200 is not None and not (isinstance(s200, float) and s200 != s200):
+                    entry["sma200"] = round(float(s200), 2)
+            candles.append(entry)
+
+        return JSONResponse({"ticker": ticker, "candles": candles, "overlays": overlays})
+    except Exception as e:
+        logger.error("Chart data error for {}: {}".format(ticker, e))
+        return JSONResponse({"error": "Could not fetch chart data."}, status_code=500)
+
+
 @app.get("/api/chart/{ticker}")
 async def api_chart(request: Request, ticker: str):
     """Generate a candlestick chart PNG for a ticker with analysis overlays."""

@@ -363,8 +363,7 @@ function renderResult(data) {
 
         <div class="chart-card">
             <div class="card-title">Candlestick Chart &mdash; SMA 20 / 150 / 200</div>
-            <img src="${API}/api/chart/${encodeURIComponent(data.ticker)}" alt="Chart"
-                 onerror="this.style.display='none'" />
+            <div class="interactive-chart" data-ticker="${escapeHtml(data.ticker)}"></div>
         </div>
 
         ${data.news_digest ? `
@@ -388,6 +387,7 @@ function renderResult(data) {
         </div>
     `;
     resultCard.classList.add('active');
+    initAllInteractiveCharts(resultCard);
 }
 
 // History
@@ -639,7 +639,7 @@ async function showDetail(id) {
             ${cardsHtml}
             <div class="chart-card" style="margin-top:16px">
                 <div class="card-title">Candlestick Chart</div>
-                <img src="${API}/api/chart/${encodeURIComponent(data.ticker)}" alt="Chart" onerror="this.parentElement.style.display='none'" />
+                <div class="interactive-chart" data-ticker="${escapeHtml(data.ticker)}"></div>
             </div>
             ${data.news_digest ? `
             <div class="news-digest-card" style="margin-top:16px">
@@ -657,6 +657,7 @@ async function showDetail(id) {
             ${newsHtml}
         `;
         modalOverlay.classList.add('active');
+        initAllInteractiveCharts(modalContent);
     } catch (err) { console.error('Detail error:', err); }
 }
 
@@ -2157,7 +2158,7 @@ function renderAnalysisModal(data) {
         cardsHtml +
         '<div class="chart-card" style="margin-top:16px">' +
             '<div class="card-title">Candlestick Chart</div>' +
-            '<img src="' + API + '/api/chart/' + data.ticker + '" alt="Chart" onerror="this.parentElement.style.display=\'none\'" />' +
+            '<div class="interactive-chart" data-ticker="' + data.ticker + '"></div>' +
         '</div>' +
         (data.news_digest ? '<div class="news-digest-card" style="margin-top:16px"><div class="card-title">AI News Digest</div>' +
             '<span class="sentiment-badge sentiment-' + ((data.news_digest.sentiment || '').toLowerCase()) + '">' + (data.news_digest.sentiment || 'N/A') + '</span>' +
@@ -2168,6 +2169,7 @@ function renderAnalysisModal(data) {
         '</div>' +
         newsHtml;
     modalOverlay.classList.add('active');
+    initAllInteractiveCharts(modalContent);
 }
 
 function showAddToPortfolioFromAnalysis(ticker, company, price) {
@@ -2404,7 +2406,7 @@ function renderStockDetail(data) {
         // Chart
         '<div class="chart-card">' +
             '<div class="card-title">Chart</div>' +
-            '<img src="' + API + '/api/chart/' + data.ticker + '" alt="Chart" onerror="this.parentElement.style.display=\'none\'" />' +
+            '<div class="interactive-chart" data-ticker="' + data.ticker + '"></div>' +
         '</div>' +
 
         // Transaction History
@@ -2422,6 +2424,7 @@ function renderStockDetail(data) {
 
     // Load transaction history after rendering
     loadTransactionHistory(data.id);
+    initAllInteractiveCharts(detailContent);
 }
 
 // --- Buy More Shares Modal ---
@@ -3832,3 +3835,418 @@ window.addEventListener('beforeunload', function() {
 
 // Start social features after page load
 initSocial();
+
+
+// =============================================
+// === Interactive Candlestick Chart Renderer ===
+// =============================================
+
+function initInteractiveChart(container) {
+    var ticker = container.getAttribute('data-ticker');
+    if (!ticker) return;
+
+    container.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:13px">Loading chart...</div>';
+
+    fetch(API + '/api/chart-data/' + encodeURIComponent(ticker))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error || !data.candles || !data.candles.length) {
+                container.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:13px">Chart unavailable</div>';
+                return;
+            }
+            renderInteractiveChart(container, data);
+        })
+        .catch(function() {
+            container.innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3);font-size:13px">Chart unavailable</div>';
+        });
+}
+
+function renderInteractiveChart(container, data) {
+    var candles = data.candles;
+    var overlays = data.overlays || {};
+
+    // Create DOM
+    container.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'ichart-wrap';
+    var canvas = document.createElement('canvas');
+    canvas.className = 'ichart-canvas';
+    var tooltip = document.createElement('div');
+    tooltip.className = 'ichart-tooltip';
+    tooltip.style.display = 'none';
+    wrap.appendChild(canvas);
+    wrap.appendChild(tooltip);
+    container.appendChild(wrap);
+
+    // Layout constants
+    var dpr = window.devicePixelRatio || 1;
+    var PAD = { top: 20, right: 60, bottom: 30, left: 10 };
+    var VOL_RATIO = 0.18;
+
+    function resize() {
+        var w = wrap.clientWidth;
+        var h = Math.max(320, Math.min(480, w * 0.55));
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        return { w: w, h: h };
+    }
+
+    var dim = resize();
+
+    // Price and volume range
+    var prices = [];
+    var volumes = [];
+    candles.forEach(function(c) { prices.push(c.high, c.low); volumes.push(c.volume); });
+    var pMin = Math.min.apply(null, prices);
+    var pMax = Math.max.apply(null, prices);
+    var pPad = (pMax - pMin) * 0.06;
+    pMin -= pPad; pMax += pPad;
+    var vMax = Math.max.apply(null, volumes);
+
+    // Coordinate helpers
+    var chartW, chartH, volH;
+    function updateDims(w, h) {
+        chartW = w - PAD.left - PAD.right;
+        chartH = h - PAD.top - PAD.bottom;
+        volH = chartH * VOL_RATIO;
+    }
+    updateDims(dim.w, dim.h);
+
+    var barW = chartW / candles.length;
+
+    function xForIdx(i) { return PAD.left + i * barW + barW / 2; }
+    function yForPrice(p) { return PAD.top + (1 - (p - pMin) / (pMax - pMin)) * (chartH - volH); }
+    function yForVol(v) { return PAD.top + chartH - (v / vMax) * volH; }
+
+    // Colors
+    var UP = '#00b894';
+    var DN = '#e74c3c';
+    var SMA_COLORS = { sma20: '#74b9ff', sma150: '#6c5ce7', sma200: '#e74c3c' };
+    var BG = '#0f1117';
+    var GRID = '#1a1d27';
+    var TEXT_DIM = '#6b6f8a';
+
+    function draw(hoverIdx) {
+        var w = dim.w, h = dim.h;
+        var ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, w, h);
+
+        // Grid lines (price)
+        var priceRange = pMax - pMin;
+        var step = niceStep(priceRange, 5);
+        ctx.strokeStyle = GRID;
+        ctx.lineWidth = 1;
+        ctx.font = '10px JetBrains Mono, monospace';
+        ctx.fillStyle = TEXT_DIM;
+        ctx.textAlign = 'right';
+        for (var p = Math.ceil(pMin / step) * step; p <= pMax; p += step) {
+            var yy = yForPrice(p);
+            if (yy < PAD.top || yy > PAD.top + chartH - volH) continue;
+            ctx.beginPath(); ctx.moveTo(PAD.left, yy); ctx.lineTo(w - PAD.right, yy); ctx.stroke();
+            ctx.fillText('$' + p.toFixed(2), w - 4, yy + 3);
+        }
+
+        // Grid lines (dates)
+        ctx.textAlign = 'center';
+        ctx.fillStyle = TEXT_DIM;
+        var dateStep = Math.max(1, Math.floor(candles.length / 6));
+        for (var di = 0; di < candles.length; di += dateStep) {
+            var xx = xForIdx(di);
+            ctx.beginPath(); ctx.moveTo(xx, PAD.top); ctx.lineTo(xx, PAD.top + chartH); ctx.stroke();
+            var parts = candles[di].date.split('-');
+            ctx.fillText(parts[1] + '/' + parts[2], xx, h - 4);
+        }
+
+        // Volume bars
+        var vBarW = Math.max(1, barW * 0.6);
+        candles.forEach(function(c, i) {
+            var x = xForIdx(i);
+            var vy = yForVol(c.volume);
+            var vHeight = PAD.top + chartH - vy;
+            ctx.fillStyle = c.close >= c.open ? 'rgba(0,184,148,0.25)' : 'rgba(231,76,60,0.25)';
+            ctx.fillRect(x - vBarW / 2, vy, vBarW, vHeight);
+        });
+
+        // Candlesticks
+        var bodyW = Math.max(1, barW * 0.6);
+        candles.forEach(function(c, i) {
+            var x = xForIdx(i);
+            var isUp = c.close >= c.open;
+            var color = isUp ? UP : DN;
+
+            // Wick
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, yForPrice(c.high));
+            ctx.lineTo(x, yForPrice(c.low));
+            ctx.stroke();
+
+            // Body
+            var yOpen = yForPrice(c.open);
+            var yClose = yForPrice(c.close);
+            var bodyTop = Math.min(yOpen, yClose);
+            var bodyHeight = Math.max(1, Math.abs(yOpen - yClose));
+            ctx.fillStyle = color;
+            ctx.fillRect(x - bodyW / 2, bodyTop, bodyW, bodyHeight);
+        });
+
+        // SMA lines
+        ['sma20', 'sma150', 'sma200'].forEach(function(key) {
+            ctx.strokeStyle = SMA_COLORS[key];
+            ctx.lineWidth = key === 'sma20' ? 1.0 : 1.2;
+            if (key === 'sma200') ctx.setLineDash([4, 3]); else ctx.setLineDash([]);
+            ctx.beginPath();
+            var started = false;
+            candles.forEach(function(c, i) {
+                if (c[key] == null) return;
+                var x = xForIdx(i);
+                var y = yForPrice(c[key]);
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
+
+        // Overlay lines (support, resistance, stop loss, targets)
+        drawOverlayLines(ctx, overlays, w);
+
+        // Crosshair + highlight
+        if (hoverIdx != null && hoverIdx >= 0 && hoverIdx < candles.length) {
+            var hx = xForIdx(hoverIdx);
+
+            // Vertical line
+            ctx.strokeStyle = 'rgba(228,230,240,0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(hx, PAD.top); ctx.lineTo(hx, PAD.top + chartH); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Horizontal line at close
+            var hc = candles[hoverIdx];
+            var hy = yForPrice(hc.close);
+            ctx.strokeStyle = 'rgba(228,230,240,0.3)';
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(PAD.left, hy); ctx.lineTo(w - PAD.right, hy); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Price label on right axis
+            ctx.fillStyle = '#7c6cf0';
+            var labelH = 18;
+            ctx.fillRect(w - PAD.right, hy - labelH / 2, PAD.right, labelH);
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px JetBrains Mono, monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('$' + hc.close.toFixed(2), w - 4, hy + 4);
+
+            // Date label on bottom
+            ctx.fillStyle = '#7c6cf0';
+            ctx.fillRect(hx - 32, h - PAD.bottom, 64, PAD.bottom);
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            var dp = hc.date.split('-');
+            ctx.fillText(dp[1] + '/' + dp[2], hx, h - 8);
+
+            // Highlight candle
+            var isUp = hc.close >= hc.open;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            var yo = yForPrice(hc.open), yc = yForPrice(hc.close);
+            ctx.strokeRect(hx - bodyW / 2 - 1, Math.min(yo, yc) - 1, bodyW + 2, Math.max(1, Math.abs(yo - yc)) + 2);
+        }
+    }
+
+    function drawOverlayLines(ctx, ov, w) {
+        // Support levels
+        (ov.support_levels || []).forEach(function(s) {
+            var p = parseOverlayPrice(s);
+            if (p && p >= pMin && p <= pMax) {
+                ctx.strokeStyle = 'rgba(0,184,148,0.5)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([6, 4]);
+                var y = yForPrice(p);
+                ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(w - PAD.right, y); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#00b894';
+                ctx.font = '9px JetBrains Mono, monospace';
+                ctx.textAlign = 'right';
+                ctx.fillText('S $' + p.toFixed(2), w - 4, y - 4);
+            }
+        });
+        // Resistance levels
+        (ov.resistance_levels || []).forEach(function(s) {
+            var p = parseOverlayPrice(s);
+            if (p && p >= pMin && p <= pMax) {
+                ctx.strokeStyle = 'rgba(231,76,60,0.5)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([6, 4]);
+                var y = yForPrice(p);
+                ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(w - PAD.right, y); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#e74c3c';
+                ctx.font = '9px JetBrains Mono, monospace';
+                ctx.textAlign = 'right';
+                ctx.fillText('R $' + p.toFixed(2), w - 4, y - 4);
+            }
+        });
+        // Stop loss
+        var sl = parseOverlayPrice(ov.stop_loss);
+        if (sl && sl >= pMin && sl <= pMax) {
+            ctx.strokeStyle = '#ff4757';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            var y = yForPrice(sl);
+            ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(w - PAD.right, y); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#ff4757';
+            ctx.font = '9px JetBrains Mono, monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('STOP $' + sl.toFixed(2), w - 4, y - 4);
+        }
+        // Target
+        var tgt = parseOverlayPrice(ov.price_target_short);
+        if (tgt && tgt >= pMin && tgt <= pMax) {
+            ctx.strokeStyle = '#2ed573';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            var y = yForPrice(tgt);
+            ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(w - PAD.right, y); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#2ed573';
+            ctx.font = '9px JetBrains Mono, monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText('TGT $' + tgt.toFixed(2), w - 4, y - 4);
+        }
+    }
+
+    function parseOverlayPrice(s) {
+        if (s == null) return null;
+        if (typeof s === 'number') return s;
+        var m = String(s).match(/\$?([\d]+\.?\d*)/);
+        return m ? parseFloat(m[1]) : null;
+    }
+
+    function niceStep(range, targetTicks) {
+        var rough = range / targetTicks;
+        var mag = Math.pow(10, Math.floor(Math.log10(rough)));
+        var normalized = rough / mag;
+        if (normalized <= 1.5) return mag;
+        if (normalized <= 3.5) return 2 * mag;
+        if (normalized <= 7.5) return 5 * mag;
+        return 10 * mag;
+    }
+
+    function idxFromX(clientX) {
+        var rect = canvas.getBoundingClientRect();
+        var x = clientX - rect.left;
+        var idx = Math.round((x - PAD.left - barW / 2) / barW);
+        return Math.max(0, Math.min(candles.length - 1, idx));
+    }
+
+    function showTooltip(idx, clientX, clientY) {
+        var c = candles[idx];
+        var chg = c.close - c.open;
+        var chgPct = ((chg / c.open) * 100).toFixed(2);
+        var chgSign = chg >= 0 ? '+' : '';
+        var chgColor = chg >= 0 ? UP : DN;
+
+        var html = '<div class="ichart-tt-date">' + c.date + '</div>' +
+            '<div class="ichart-tt-row"><span>Open</span><span>$' + c.open.toFixed(2) + '</span></div>' +
+            '<div class="ichart-tt-row"><span>High</span><span>$' + c.high.toFixed(2) + '</span></div>' +
+            '<div class="ichart-tt-row"><span>Low</span><span>$' + c.low.toFixed(2) + '</span></div>' +
+            '<div class="ichart-tt-row"><span>Close</span><span style="color:' + chgColor + '">$' + c.close.toFixed(2) + '</span></div>' +
+            '<div class="ichart-tt-row"><span>Change</span><span style="color:' + chgColor + '">' + chgSign + chg.toFixed(2) + ' (' + chgSign + chgPct + '%)</span></div>' +
+            '<div class="ichart-tt-row"><span>Volume</span><span>' + formatVol(c.volume) + '</span></div>';
+
+        if (c.sma20 != null) html += '<div class="ichart-tt-row"><span style="color:#74b9ff">SMA 20</span><span>$' + c.sma20.toFixed(2) + '</span></div>';
+        if (c.sma150 != null) html += '<div class="ichart-tt-row"><span style="color:#6c5ce7">SMA 150</span><span>$' + c.sma150.toFixed(2) + '</span></div>';
+        if (c.sma200 != null) html += '<div class="ichart-tt-row"><span style="color:#e74c3c">SMA 200</span><span>$' + c.sma200.toFixed(2) + '</span></div>';
+
+        tooltip.innerHTML = html;
+        tooltip.style.display = '';
+
+        // Position tooltip
+        var rect = wrap.getBoundingClientRect();
+        var tx = clientX - rect.left + 16;
+        var ty = clientY - rect.top - 10;
+        // Flip if too close to right/bottom edge
+        if (tx + 200 > wrap.clientWidth) tx = clientX - rect.left - 210;
+        if (ty + tooltip.offsetHeight > wrap.clientHeight) ty = wrap.clientHeight - tooltip.offsetHeight - 4;
+        if (ty < 0) ty = 4;
+        tooltip.style.left = tx + 'px';
+        tooltip.style.top = ty + 'px';
+    }
+
+    function formatVol(v) {
+        if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+        if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+        if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+        return v.toString();
+    }
+
+    // Event handlers
+    canvas.addEventListener('mousemove', function(e) {
+        var idx = idxFromX(e.clientX);
+        draw(idx);
+        showTooltip(idx, e.clientX, e.clientY);
+    });
+
+    canvas.addEventListener('mouseleave', function() {
+        draw(null);
+        tooltip.style.display = 'none';
+    });
+
+    canvas.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        var touch = e.touches[0];
+        var idx = idxFromX(touch.clientX);
+        draw(idx);
+        showTooltip(idx, touch.clientX, touch.clientY);
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', function() {
+        draw(null);
+        tooltip.style.display = 'none';
+    });
+
+    // SMA legend
+    var legend = document.createElement('div');
+    legend.className = 'ichart-legend';
+    legend.innerHTML = '<span style="color:#74b9ff">-- SMA 20</span>' +
+        '<span style="color:#6c5ce7">-- SMA 150</span>' +
+        '<span style="color:#e74c3c">-- SMA 200</span>';
+    wrap.appendChild(legend);
+
+    // Resize handler
+    var resizeTimer;
+    var ro = new ResizeObserver(function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            dim = resize();
+            updateDims(dim.w, dim.h);
+            barW = chartW / candles.length;
+            draw(null);
+        }, 100);
+    });
+    ro.observe(wrap);
+
+    // Initial draw
+    draw(null);
+}
+
+function initAllInteractiveCharts(root) {
+    (root || document).querySelectorAll('.interactive-chart[data-ticker]').forEach(function(el) {
+        if (!el._ichartInit) {
+            el._ichartInit = true;
+            initInteractiveChart(el);
+        }
+    });
+}
