@@ -794,6 +794,24 @@ body {
 .pie-legend-pct {
     color: var(--text3); font-family: 'JetBrains Mono', monospace;
 }
+.pie-legend-item { cursor: pointer; transition: opacity 0.15s; }
+.pie-legend-item:hover { opacity: 0.8; }
+.pie-tooltip {
+    position: absolute; pointer-events: none; z-index: 10;
+    background: rgba(15,17,23,0.95); border: 1px solid var(--border2);
+    border-radius: 8px; padding: 10px 14px; min-width: 160px;
+    font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.pie-tt-ticker {
+    font-weight: 700; color: var(--text); font-size: 14px;
+    margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.pie-tt-row {
+    display: flex; justify-content: space-between; gap: 16px;
+    padding: 2px 0; color: var(--text2);
+}
+.pie-tt-row span:last-child { color: var(--text); font-weight: 500; }
 
 /* Diversity evaluation */
 .diversity-eval {

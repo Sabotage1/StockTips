@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StockTips AI</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="stylesheet" href="/static/style.css?v=1.6.6">
+    <link rel="stylesheet" href="/static/style.css?v=1.6.6a">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 </head>
@@ -291,7 +291,10 @@
             </div>
             <div class="portfolio-pie-wrap" id="portfolioPieWrap" style="display:none">
                 <div class="diversity-eval" id="diversityEval"></div>
-                <canvas id="portfolioPieChart" width="220" height="220"></canvas>
+                <div class="pie-chart-container" style="position:relative">
+                    <canvas id="portfolioPieChart" width="220" height="220"></canvas>
+                    <div class="pie-tooltip" id="pieTooltip" style="display:none"></div>
+                </div>
                 <div class="pie-legend" id="pieLegend"></div>
             </div>
         </div>
@@ -701,6 +704,6 @@
     </div>
 </div>
 
-<script src="/static/script.js?v=1.6.6"></script>
+<script src="/static/script.js?v=1.6.6a"></script>
 </body>
 </html>

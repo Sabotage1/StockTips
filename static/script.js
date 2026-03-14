@@ -1163,60 +1163,203 @@ var PIE_COLORS = [
     '#e879f9', '#4ade80', '#facc15', '#f87171', '#818cf8'
 ];
 
+var _pieSlices = [];
+var _pieValid = [];
+var _pieTotal = 0;
+
 function renderPortfolioPieChart(items) {
     var wrap = document.getElementById('portfolioPieWrap');
     var canvas = document.getElementById('portfolioPieChart');
     var legendEl = document.getElementById('pieLegend');
+    var tooltip = document.getElementById('pieTooltip');
     if (!wrap || !canvas || !legendEl) return;
 
     var valid = (items || []).filter(function(it) { return it.market_value != null && it.market_value > 0; });
     if (!valid.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = 'flex';
+    _pieValid = valid;
 
     var total = valid.reduce(function(s, it) { return s + it.market_value; }, 0);
-    var ctx = canvas.getContext('2d');
+    _pieTotal = total;
     var dpr = window.devicePixelRatio || 1;
     var size = 220;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     canvas.style.width = size + 'px';
     canvas.style.height = size + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.style.cursor = 'pointer';
 
     var cx = size / 2, cy = size / 2, r = 90, innerR = 55;
-    var startAngle = -Math.PI / 2;
 
-    ctx.clearRect(0, 0, size, size);
-
+    // Precompute slice angles
+    _pieSlices = [];
+    var angle = -Math.PI / 2;
     valid.forEach(function(it, i) {
         var slice = (it.market_value / total) * Math.PI * 2;
-        var endAngle = startAngle + slice;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, startAngle, endAngle);
-        ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
-        ctx.closePath();
-        ctx.fillStyle = PIE_COLORS[i % PIE_COLORS.length];
-        ctx.fill();
-        startAngle = endAngle;
+        _pieSlices.push({ start: angle, end: angle + slice, idx: i });
+        angle += slice;
     });
 
-    // Center text
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '600 14px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(valid.length + ' stock' + (valid.length !== 1 ? 's' : ''), cx, cy);
+    function drawPie(hoverIdx) {
+        var ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, size, size);
+
+        _pieSlices.forEach(function(s) {
+            var it = valid[s.idx];
+            var isHover = s.idx === hoverIdx;
+            var offset = isHover ? 6 : 0;
+            var midAngle = (s.start + s.end) / 2;
+            var ox = offset * Math.cos(midAngle);
+            var oy = offset * Math.sin(midAngle);
+
+            ctx.beginPath();
+            ctx.arc(cx + ox, cy + oy, isHover ? r + 3 : r, s.start, s.end);
+            ctx.arc(cx + ox, cy + oy, innerR, s.end, s.start, true);
+            ctx.closePath();
+            ctx.fillStyle = PIE_COLORS[s.idx % PIE_COLORS.length];
+            ctx.globalAlpha = (hoverIdx != null && !isHover) ? 0.4 : 1;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            if (isHover) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        });
+
+        // Center text
+        if (hoverIdx != null && valid[hoverIdx]) {
+            var hIt = valid[hoverIdx];
+            var pct = (hIt.market_value / total * 100).toFixed(1);
+            ctx.fillStyle = PIE_COLORS[hoverIdx % PIE_COLORS.length];
+            ctx.font = '700 16px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(hIt.ticker, cx, cy - 8);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '500 12px Inter, sans-serif';
+            ctx.fillText(pct + '%', cx, cy + 10);
+        } else {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '600 14px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(valid.length + ' stock' + (valid.length !== 1 ? 's' : ''), cx, cy);
+        }
+    }
+
+    function getSliceAtPos(mx, my) {
+        var dx = mx - cx, dy = my - cy;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < innerR || dist > r + 8) return -1;
+        var angle = Math.atan2(dy, dx);
+        // Normalize to match our starting angle
+        for (var i = 0; i < _pieSlices.length; i++) {
+            var s = _pieSlices[i];
+            var a = angle;
+            // Handle wrap-around
+            var start = s.start, end = s.end;
+            if (a < start) a += Math.PI * 2;
+            if (start < -Math.PI) { start += Math.PI * 2; end += Math.PI * 2; }
+            if (a >= start && a < end) return i;
+            // Also try shifted
+            a = angle + Math.PI * 2;
+            if (a >= start && a < end) return i;
+        }
+        return -1;
+    }
+
+    // Mouse events
+    canvas.onmousemove = function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var mx = (e.clientX - rect.left) * (size / rect.width);
+        var my = (e.clientY - rect.top) * (size / rect.height);
+        var idx = getSliceAtPos(mx, my);
+        drawPie(idx >= 0 ? idx : null);
+
+        if (idx >= 0 && tooltip) {
+            var it = valid[idx];
+            var pct = (it.market_value / total * 100).toFixed(1);
+            var pnlStr = '';
+            if (it.pnl != null) {
+                var sign = it.pnl >= 0 ? '+' : '-';
+                var color = it.pnl >= 0 ? 'var(--green)' : 'var(--red)';
+                pnlStr = '<div class="pie-tt-row"><span>P&L</span><span style="color:' + color + '">' + sign + '$' + Math.abs(it.pnl).toFixed(2) + '</span></div>';
+            }
+            tooltip.innerHTML =
+                '<div class="pie-tt-ticker">' + it.ticker + '</div>' +
+                '<div class="pie-tt-row"><span>Value</span><span>$' + it.market_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span></div>' +
+                '<div class="pie-tt-row"><span>Weight</span><span>' + pct + '%</span></div>' +
+                '<div class="pie-tt-row"><span>Shares</span><span>' + it.shares + '</span></div>' +
+                pnlStr;
+            tooltip.style.display = '';
+            // Position near cursor
+            var container = canvas.parentElement;
+            var cRect = container.getBoundingClientRect();
+            var tx = e.clientX - cRect.left + 14;
+            var ty = e.clientY - cRect.top - 10;
+            if (tx + 170 > container.clientWidth) tx = e.clientX - cRect.left - 180;
+            if (ty < 0) ty = 4;
+            tooltip.style.left = tx + 'px';
+            tooltip.style.top = ty + 'px';
+        } else if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    };
+
+    canvas.onmouseleave = function() {
+        drawPie(null);
+        if (tooltip) tooltip.style.display = 'none';
+    };
+
+    // Touch events
+    canvas.ontouchstart = function(e) {
+        var touch = e.touches[0];
+        var rect = canvas.getBoundingClientRect();
+        var mx = (touch.clientX - rect.left) * (size / rect.width);
+        var my = (touch.clientY - rect.top) * (size / rect.height);
+        var idx = getSliceAtPos(mx, my);
+        drawPie(idx >= 0 ? idx : null);
+        if (idx >= 0 && tooltip) {
+            var it = valid[idx];
+            var pct = (it.market_value / total * 100).toFixed(1);
+            tooltip.innerHTML =
+                '<div class="pie-tt-ticker">' + it.ticker + '</div>' +
+                '<div class="pie-tt-row"><span>Value</span><span>$' + it.market_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span></div>' +
+                '<div class="pie-tt-row"><span>Weight</span><span>' + pct + '%</span></div>';
+            tooltip.style.display = '';
+            var container = canvas.parentElement;
+            tooltip.style.left = '50%';
+            tooltip.style.top = '-60px';
+            tooltip.style.transform = 'translateX(-50%)';
+        }
+    };
+
+    canvas.ontouchend = function() {
+        drawPie(null);
+        if (tooltip) { tooltip.style.display = 'none'; tooltip.style.transform = ''; }
+    };
 
     // Legend
     legendEl.innerHTML = valid.map(function(it, i) {
         var pct = (it.market_value / total * 100).toFixed(1);
-        return '<div class="pie-legend-item">' +
+        return '<div class="pie-legend-item" data-pie-idx="' + i + '">' +
             '<span class="pie-legend-dot" style="background:' + PIE_COLORS[i % PIE_COLORS.length] + '"></span>' +
             '<span class="pie-legend-ticker">' + it.ticker + '</span>' +
             '<span class="pie-legend-pct">' + pct + '%</span>' +
             '</div>';
     }).join('');
 
+    // Legend hover highlights slice
+    legendEl.onmouseover = function(e) {
+        var item = e.target.closest('.pie-legend-item');
+        if (item) drawPie(parseInt(item.getAttribute('data-pie-idx')));
+    };
+    legendEl.onmouseout = function() { drawPie(null); };
+
+    drawPie(null);
     renderDiversityEval(valid, total);
 }
 
