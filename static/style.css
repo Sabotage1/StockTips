@@ -1326,7 +1326,7 @@ body {
 
     /* Portfolio */
     .portfolio-top-row { flex-direction: column; }
-    .portfolio-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .portfolio-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%; }
     .portfolio-pie-wrap { min-width: unset; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
     .pf-add-toggle {
         display: flex; align-items: center; gap: 8px;
@@ -2293,7 +2293,7 @@ body {
     .stats-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat-value { font-size: 18px; }
     .stat-card { padding: 10px; }
-    .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
+    .portfolio-summary { grid-template-columns: repeat(2, 1fr); width: 100%; }
     .breakout-box { grid-template-columns: 1fr; }
     .badges { gap: 4px; }
     .badge { font-size: 10px; padding: 4px 10px; }
