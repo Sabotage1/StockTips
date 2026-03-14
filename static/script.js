@@ -1182,14 +1182,14 @@ function renderPortfolioPieChart(items) {
     var total = valid.reduce(function(s, it) { return s + it.market_value; }, 0);
     _pieTotal = total;
     var dpr = window.devicePixelRatio || 1;
-    var size = 220;
+    var size = 230;
     canvas.width = size * dpr;
     canvas.height = size * dpr;
     canvas.style.width = size + 'px';
     canvas.style.height = size + 'px';
     canvas.style.cursor = 'pointer';
 
-    var cx = size / 2, cy = size / 2, r = 90, innerR = 55;
+    var cx = size / 2, cy = size / 2 - 4, r = 90, innerR = 55;
 
     // Precompute slice angles
     _pieSlices = [];
@@ -1200,27 +1200,78 @@ function renderPortfolioPieChart(items) {
         angle += slice;
     });
 
+    function darkenColor(hex, amt) {
+        var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        r = Math.max(0, r - amt); g = Math.max(0, g - amt); b = Math.max(0, b - amt);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    function lightenColor(hex, amt) {
+        var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        r = Math.min(255, r + amt); g = Math.min(255, g + amt); b = Math.min(255, b + amt);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    var depth = 8; // 3D extrusion depth
+
     function drawPie(hoverIdx) {
         var ctx = canvas.getContext('2d');
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, size, size);
 
+        // --- 3D depth layers (draw bottom-up) ---
+        for (var d = depth; d > 0; d--) {
+            _pieSlices.forEach(function(s) {
+                var isHover = s.idx === hoverIdx;
+                var offset = isHover ? 6 : 0;
+                var midAngle = (s.start + s.end) / 2;
+                var ox = offset * Math.cos(midAngle);
+                var oy = offset * Math.sin(midAngle);
+                var baseColor = PIE_COLORS[s.idx % PIE_COLORS.length];
+                var shade = darkenColor(baseColor, 40 + d * 8);
+
+                ctx.beginPath();
+                ctx.arc(cx + ox, cy + oy + d, isHover ? r + 3 : r, s.start, s.end);
+                ctx.arc(cx + ox, cy + oy + d, innerR, s.end, s.start, true);
+                ctx.closePath();
+                ctx.fillStyle = shade;
+                ctx.globalAlpha = (hoverIdx != null && !isHover) ? 0.25 : 0.6;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        // --- Top face with gradient ---
         _pieSlices.forEach(function(s) {
-            var it = valid[s.idx];
             var isHover = s.idx === hoverIdx;
             var offset = isHover ? 6 : 0;
             var midAngle = (s.start + s.end) / 2;
             var ox = offset * Math.cos(midAngle);
             var oy = offset * Math.sin(midAngle);
+            var baseColor = PIE_COLORS[s.idx % PIE_COLORS.length];
 
             ctx.beginPath();
             ctx.arc(cx + ox, cy + oy, isHover ? r + 3 : r, s.start, s.end);
             ctx.arc(cx + ox, cy + oy, innerR, s.end, s.start, true);
             ctx.closePath();
-            ctx.fillStyle = PIE_COLORS[s.idx % PIE_COLORS.length];
+
+            // Radial gradient for 3D curvature
+            var grad = ctx.createRadialGradient(
+                cx + ox - 15, cy + oy - 20, innerR * 0.5,
+                cx + ox, cy + oy, r + 5
+            );
+            grad.addColorStop(0, lightenColor(baseColor, 35));
+            grad.addColorStop(0.6, baseColor);
+            grad.addColorStop(1, darkenColor(baseColor, 30));
+            ctx.fillStyle = grad;
             ctx.globalAlpha = (hoverIdx != null && !isHover) ? 0.4 : 1;
             ctx.fill();
             ctx.globalAlpha = 1;
+
+            // Subtle edge line between slices
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
 
             if (isHover) {
                 ctx.strokeStyle = '#fff';
@@ -1229,7 +1280,30 @@ function renderPortfolioPieChart(items) {
             }
         });
 
-        // Center text
+        // --- Specular highlight (top-left light source) ---
+        var hlGrad = ctx.createRadialGradient(cx - 25, cy - 30, 10, cx, cy, r);
+        hlGrad.addColorStop(0, 'rgba(255,255,255,0.12)');
+        hlGrad.addColorStop(0.5, 'rgba(255,255,255,0.03)');
+        hlGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.arc(cx, cy, innerR, Math.PI * 2, 0, true);
+        ctx.closePath();
+        ctx.fillStyle = hlGrad;
+        ctx.fill();
+
+        // --- Inner hole shadow (inset effect) ---
+        var innerShadow = ctx.createRadialGradient(cx, cy, innerR - 4, cx, cy, innerR + 6);
+        innerShadow.addColorStop(0, 'rgba(0,0,0,0)');
+        innerShadow.addColorStop(0.7, 'rgba(0,0,0,0.15)');
+        innerShadow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(cx, cy, innerR + 6, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fillStyle = innerShadow;
+        ctx.fill();
+
+        // --- Center text ---
         if (hoverIdx != null && valid[hoverIdx]) {
             var hIt = valid[hoverIdx];
             var pct = (hIt.market_value / total * 100).toFixed(1);
