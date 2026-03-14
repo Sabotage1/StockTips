@@ -1082,11 +1082,11 @@ body {
     color: var(--text2); margin-bottom: 12px;
 }
 
-.settings-toggle {
+.pf-settings-toggle {
     display: flex; align-items: center; justify-content: space-between;
     padding: 6px 0;
 }
-.settings-toggle-label {
+.pf-settings-toggle-label {
     font-size: 13px; color: var(--text); font-weight: 500;
 }
 

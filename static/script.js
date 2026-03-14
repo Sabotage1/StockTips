@@ -1590,8 +1590,8 @@ function renderSettingsPanel() {
     var colKeys = Object.keys(COLUMN_LABELS);
     colsEl.innerHTML = colKeys.map(function(key) {
         var checked = userSettings.visible_columns[key] !== false;
-        return '<div class="settings-toggle">' +
-            '<span class="settings-toggle-label">' + COLUMN_LABELS[key] + '</span>' +
+        return '<div class="pf-settings-toggle">' +
+            '<span class="pf-settings-toggle-label">' + COLUMN_LABELS[key] + '</span>' +
             '<label class="toggle-switch"><input type="checkbox" data-type="col" data-key="' + key + '"' + (checked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
             '</div>';
     }).join('');
@@ -1600,16 +1600,16 @@ function renderSettingsPanel() {
     var cardKeys = Object.keys(CARD_LABELS);
     cardsEl.innerHTML = cardKeys.map(function(key) {
         var checked = userSettings.visible_cards[key] !== false;
-        return '<div class="settings-toggle">' +
-            '<span class="settings-toggle-label">' + CARD_LABELS[key] + '</span>' +
+        return '<div class="pf-settings-toggle">' +
+            '<span class="pf-settings-toggle-label">' + CARD_LABELS[key] + '</span>' +
             '<label class="toggle-switch"><input type="checkbox" data-type="card" data-key="' + key + '"' + (checked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
             '</div>';
     }).join('');
 
     // Pie chart toggle
     var pieChecked = userSettings.show_pie_chart !== false;
-    chartEl.innerHTML = '<div class="settings-toggle">' +
-        '<span class="settings-toggle-label">Pie Chart</span>' +
+    chartEl.innerHTML = '<div class="pf-settings-toggle">' +
+        '<span class="pf-settings-toggle-label">Pie Chart</span>' +
         '<label class="toggle-switch"><input type="checkbox" data-type="chart" data-key="pie"' + (pieChecked ? ' checked' : '') + ' onchange="onSettingToggle(this)"><span class="toggle-slider"></span></label>' +
         '</div>';
 }
