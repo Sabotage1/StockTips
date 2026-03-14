@@ -604,6 +604,34 @@ def delete_user(user_id: int) -> bool:
         db.close()
 
 
+def update_user_password(user_id: int, new_password_hash: str) -> bool:
+    """Update a user's password hash. Returns True if updated."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return False
+        user.password_hash = new_password_hash
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def update_user_display_name(user_id: int, display_name: Optional[str]) -> bool:
+    """Update a user's display name. Returns True if updated."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return False
+        user.display_name = display_name
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
 # --- Portfolio ---
 
 def get_user_portfolio(user_id: int) -> List[PortfolioItem]:

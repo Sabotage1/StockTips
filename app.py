@@ -21,7 +21,8 @@ from database import (
     get_analysis_by_share_token, get_unique_tickers, delete_analysis,
     delete_all_history, block_user, unblock_user, is_user_blocked,
     get_blocked_users, get_user_by_username, get_all_users, create_user,
-    delete_user, get_user_portfolio, add_portfolio_item,
+    delete_user, update_user_password, update_user_display_name,
+    get_user_portfolio, add_portfolio_item,
     update_portfolio_item, delete_portfolio_item,
     buy_more_shares, sell_shares, get_portfolio_transactions, get_realized_pnl_total,
     get_user_settings, save_user_settings, reorder_portfolio,
@@ -301,13 +302,15 @@ async def index(request: Request):
     user_role = ""
     user_code = ""
     display_name = ""
+    username = ""
     if session:
         user = get_user_by_username(session["user"])
         if user:
             user_role = user.role
             user_code = user.user_code or ""
             display_name = user.display_name or user.username or ""
-    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role, "user_code": user_code, "display_name": display_name})
+            username = user.username
+    return templates.TemplateResponse("index.html", {"request": request, "user_role": user_role, "user_code": user_code, "display_name": display_name, "username": username})
 
 
 @app.post("/api/analyze")
@@ -820,6 +823,72 @@ async def api_delete_user(request: Request, user_id: int):
     if not deleted:
         return JSONResponse({"error": "User not found"}, status_code=404)
     return JSONResponse({"ok": True, "deleted_id": user_id})
+
+
+@app.put("/api/users/{user_id}/password")
+async def api_admin_reset_password(request: Request, user_id: int):
+    """Admin resets a user's password (no current password required)."""
+    if not _is_admin(request):
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    ensure_db()
+    body = await request.json()
+    new_password = body.get("password", "")
+    if len(new_password) < 8:
+        return JSONResponse({"error": "Password must be at least 8 characters"}, status_code=400)
+    if not any(c.isupper() for c in new_password):
+        return JSONResponse({"error": "Password must contain at least one uppercase letter"}, status_code=400)
+    if not any(c.isdigit() for c in new_password):
+        return JSONResponse({"error": "Password must contain at least one number"}, status_code=400)
+    hashed = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    updated = update_user_password(user_id, hashed)
+    if not updated:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/change-password")
+async def api_change_own_password(request: Request):
+    """User changes their own password (requires current password)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    current_password = body.get("current_password", "")
+    new_password = body.get("new_password", "")
+    if not current_password or not new_password:
+        return JSONResponse({"error": "Current and new password are required"}, status_code=400)
+    if len(new_password) < 8:
+        return JSONResponse({"error": "New password must be at least 8 characters"}, status_code=400)
+    if not any(c.isupper() for c in new_password):
+        return JSONResponse({"error": "Password must contain at least one uppercase letter"}, status_code=400)
+    if not any(c.isdigit() for c in new_password):
+        return JSONResponse({"error": "Password must contain at least one number"}, status_code=400)
+    user = get_user_by_id(user_id)
+    if not user:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+    try:
+        valid = bcrypt.checkpw(current_password.encode("utf-8"), user.password_hash.encode("utf-8"))
+    except Exception:
+        valid = False
+    if not valid:
+        return JSONResponse({"error": "Current password is incorrect"}, status_code=403)
+    hashed = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    update_user_password(user_id, hashed)
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/profile")
+async def api_update_profile(request: Request):
+    """Update the current user's profile (display name)."""
+    ensure_db()
+    user_id = _get_current_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    display_name = body.get("display_name", "").strip() or None
+    update_user_display_name(user_id, display_name)
+    return JSONResponse({"ok": True, "display_name": display_name or ""})
 
 
 # --- Portfolio API ---

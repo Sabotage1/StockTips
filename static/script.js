@@ -80,6 +80,7 @@ function switchPanel(panel) {
     if (panel === 'users') loadUsers();
     if (panel === 'portfolio') loadPortfolio();
     if (panel === 'social') { loadSocialPanel(); closeChatSidebar(); }
+    if (panel === 'settings') loadSettingsPanel();
     updateFloatingChatBtn();
     window.scrollTo(0, 0);
 }
@@ -760,6 +761,7 @@ async function loadUsage() {
 }
 
 // --- Role-based UI ---
+var _defaultPageApplied = false;
 async function fetchCurrentUser() {
     try {
         const resp = await fetch(`${API}/api/me`);
@@ -773,6 +775,13 @@ async function fetchCurrentUser() {
         if (currentUserRole !== 'admin') {
             const clearBtn = document.getElementById('clearAllBtn');
             if (clearBtn) clearBtn.style.display = 'none';
+        }
+        // Apply default page on first load
+        if (!_defaultPageApplied && userSettings && userSettings.default_page && userSettings.default_page !== 'analyze') {
+            _defaultPageApplied = true;
+            switchPanel(userSettings.default_page);
+        } else {
+            _defaultPageApplied = true;
         }
     } catch (err) { console.error('Failed to fetch user info:', err); }
 }
@@ -792,15 +801,19 @@ async function loadUsers() {
         tbody.innerHTML = users.map(u => {
             const d = u.created_at ? utcDate(u.created_at).toLocaleString() : '';
             const roleCls = u.role === 'admin' ? 'badge-buy' : 'badge-info';
+            const safeUsername = escapeHtml(u.username.replace(/'/g, "\\'"));
+            const resetPwBtn = `<button class="btn-reset-pw" onclick="showResetPassword(${parseInt(u.id)}, '${safeUsername}')" title="Reset Password">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            </button>`;
             const deleteBtn = u.role === 'admin' ? '' :
-                `<button class="btn-delete-row" onclick="deleteUserAccount(${parseInt(u.id)}, '${escapeHtml(u.username.replace(/'/g, "\\'"))}')" title="Delete">&times;</button>`;
+                `<button class="btn-delete-row" onclick="deleteUserAccount(${parseInt(u.id)}, '${safeUsername}')" title="Delete">&times;</button>`;
             return `<tr>
                 <td><strong>${escapeHtml(u.username)}</strong></td>
                 <td style="color:var(--text2);font-size:13px">${escapeHtml(u.display_name) || '-'}</td>
                 <td style="font-family:'JetBrains Mono',monospace;color:var(--accent2);font-size:12px">${escapeHtml(u.user_code) || '-'}</td>
                 <td><span class="badge ${roleCls}" style="font-size:10px;padding:3px 8px">${escapeHtml(u.role)}</span></td>
                 <td style="color:var(--text2);font-size:12px">${d}</td>
-                <td>${deleteBtn}</td>
+                <td style="display:flex;gap:4px">${resetPwBtn}${deleteBtn}</td>
             </tr>`;
         }).join('');
     } catch (err) { console.error('Users error:', err); }
@@ -872,6 +885,153 @@ async function deleteUserAccount(id, username) {
         if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Delete failed'); }
         loadUsers();
     } catch (err) { alert(`Error: ${err.message}`); }
+}
+
+function showResetPassword(userId, username) {
+    var overlay = document.getElementById('pfModalOverlay');
+    var content = document.getElementById('pfModalContent');
+    content.innerHTML =
+        '<div class="pf-modal-title">Reset Password</div>' +
+        '<div class="pf-modal-sub">Set a new password for ' + escapeHtml(username) + '</div>' +
+        '<div class="pf-modal-field">' +
+            '<label class="pf-modal-label">New Password</label>' +
+            '<input type="password" id="adminNewPw" class="pf-modal-input" placeholder="Min 8 chars, 1 uppercase, 1 number" autocomplete="new-password">' +
+        '</div>' +
+        '<div class="pf-modal-error" id="resetPwError"></div>' +
+        '<button class="pf-modal-btn" id="resetPwBtn" onclick="submitResetPassword(' + parseInt(userId) + ')">Reset Password</button>';
+    overlay.classList.add('active');
+    setTimeout(function() { var inp = document.getElementById('adminNewPw'); if (inp) inp.focus(); }, 100);
+}
+
+async function submitResetPassword(userId) {
+    var pw = document.getElementById('adminNewPw').value;
+    var errorEl = document.getElementById('resetPwError');
+    var btn = document.getElementById('resetPwBtn');
+    errorEl.style.display = 'none';
+    if (pw.length < 8) { errorEl.textContent = 'Password must be at least 8 characters'; errorEl.style.display = 'block'; return; }
+    if (!/[A-Z]/.test(pw)) { errorEl.textContent = 'Must contain at least one uppercase letter'; errorEl.style.display = 'block'; return; }
+    if (!/[0-9]/.test(pw)) { errorEl.textContent = 'Must contain at least one number'; errorEl.style.display = 'block'; return; }
+    btn.disabled = true;
+    btn.textContent = 'Resetting...';
+    try {
+        var resp = await fetch(API + '/api/users/' + userId + '/password', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw }),
+        });
+        var data = await resp.json();
+        if (!resp.ok) { errorEl.textContent = data.error || 'Failed to reset'; errorEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Reset Password'; return; }
+        var content = document.getElementById('pfModalContent');
+        content.innerHTML =
+            '<div class="pf-modal-success">' +
+                '<div class="pf-modal-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>' +
+                '<div class="pf-modal-success-text">Password reset successfully</div>' +
+            '</div>';
+        setTimeout(closePfModal, 1500);
+    } catch (err) { errorEl.textContent = 'Connection error'; errorEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Reset Password'; }
+}
+
+// --- User Settings ---
+
+function loadSettingsPanel() {
+    if (!userSettings) return;
+    var defaultPage = document.getElementById('settingsDefaultPage');
+    var defaultSource = document.getElementById('settingsDefaultSource');
+    var refreshInterval = document.getElementById('settingsRefreshInterval');
+    var notifyChat = document.getElementById('settingsNotifyChat');
+    var notifyTips = document.getElementById('settingsNotifyTips');
+    var notifyFriends = document.getElementById('settingsNotifyFriends');
+    if (defaultPage && userSettings.default_page) defaultPage.value = userSettings.default_page;
+    if (defaultSource && userSettings.default_source) defaultSource.value = userSettings.default_source;
+    if (refreshInterval && userSettings.refresh_interval != null) refreshInterval.value = String(userSettings.refresh_interval);
+    if (notifyChat) notifyChat.checked = userSettings.notify_chat !== false;
+    if (notifyTips) notifyTips.checked = userSettings.notify_tips !== false;
+    if (notifyFriends) notifyFriends.checked = userSettings.notify_friends !== false;
+}
+
+async function savePreferences() {
+    var defaultPage = document.getElementById('settingsDefaultPage');
+    var defaultSource = document.getElementById('settingsDefaultSource');
+    var refreshInterval = document.getElementById('settingsRefreshInterval');
+    var notifyChat = document.getElementById('settingsNotifyChat');
+    var notifyTips = document.getElementById('settingsNotifyTips');
+    var notifyFriends = document.getElementById('settingsNotifyFriends');
+    var prefs = Object.assign({}, userSettings || {});
+    if (defaultPage) prefs.default_page = defaultPage.value;
+    if (defaultSource) prefs.default_source = defaultSource.value;
+    if (refreshInterval) prefs.refresh_interval = parseInt(refreshInterval.value);
+    if (notifyChat) prefs.notify_chat = notifyChat.checked;
+    if (notifyTips) prefs.notify_tips = notifyTips.checked;
+    if (notifyFriends) prefs.notify_friends = notifyFriends.checked;
+    userSettings = prefs;
+    try {
+        await fetch(API + '/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(prefs),
+        });
+    } catch (err) { console.error('Settings save error:', err); }
+}
+
+async function saveDisplayName() {
+    var input = document.getElementById('settingsDisplayName');
+    var msg = document.getElementById('displayNameMsg');
+    var name = input.value.trim();
+    try {
+        var resp = await fetch(API + '/api/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_name: name }),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            msg.style.display = 'block'; msg.style.color = 'var(--red)';
+            msg.textContent = data.error || 'Failed to save'; return;
+        }
+        msg.style.display = 'block'; msg.style.color = 'var(--green)';
+        msg.textContent = 'Display name updated';
+        var greetEl = document.getElementById('greetingLine');
+        if (greetEl && name) { greetEl.style.display = ''; }
+        else if (greetEl && !name) { greetEl.style.display = 'none'; }
+        setTimeout(function() { msg.style.display = 'none'; }, 3000);
+    } catch (err) {
+        msg.style.display = 'block'; msg.style.color = 'var(--red)';
+        msg.textContent = 'Connection error';
+    }
+}
+
+async function changePassword() {
+    var currentPw = document.getElementById('settingsCurrentPw').value;
+    var newPw = document.getElementById('settingsNewPw').value;
+    var confirmPw = document.getElementById('settingsConfirmPw').value;
+    var msg = document.getElementById('changePasswordMsg');
+    msg.style.display = 'none';
+    if (!currentPw) { msg.style.display = 'block'; msg.style.color = 'var(--red)'; msg.textContent = 'Current password is required'; return; }
+    if (newPw.length < 8) { msg.style.display = 'block'; msg.style.color = 'var(--red)'; msg.textContent = 'New password must be at least 8 characters'; return; }
+    if (!/[A-Z]/.test(newPw)) { msg.style.display = 'block'; msg.style.color = 'var(--red)'; msg.textContent = 'New password must contain at least one uppercase letter'; return; }
+    if (!/[0-9]/.test(newPw)) { msg.style.display = 'block'; msg.style.color = 'var(--red)'; msg.textContent = 'New password must contain at least one number'; return; }
+    if (newPw !== confirmPw) { msg.style.display = 'block'; msg.style.color = 'var(--red)'; msg.textContent = 'New passwords do not match'; return; }
+    try {
+        var resp = await fetch(API + '/api/change-password', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+        });
+        var data = await resp.json();
+        if (!resp.ok) {
+            msg.style.display = 'block'; msg.style.color = 'var(--red)';
+            msg.textContent = data.error || 'Failed to change password'; return;
+        }
+        msg.style.display = 'block'; msg.style.color = 'var(--green)';
+        msg.textContent = 'Password changed successfully';
+        document.getElementById('settingsCurrentPw').value = '';
+        document.getElementById('settingsNewPw').value = '';
+        document.getElementById('settingsConfirmPw').value = '';
+        setTimeout(function() { msg.style.display = 'none'; }, 3000);
+    } catch (err) {
+        msg.style.display = 'block'; msg.style.color = 'var(--red)';
+        msg.textContent = 'Connection error';
+    }
 }
 
 // --- Portfolio ---
