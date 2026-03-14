@@ -800,8 +800,14 @@ body {
     font-size: 10px; color: var(--text2); line-height: 1.3;
 }
 
+.portfolio-add-wrap {
+    margin-bottom: 16px;
+}
+.pf-add-toggle {
+    display: none; /* hidden on desktop, shown on mobile */
+}
 .portfolio-add-form {
-    display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+    display: flex; gap: 8px; flex-wrap: wrap;
 }
 .pf-input-ticker {
     width: 100px; text-transform: uppercase;
@@ -1322,7 +1328,19 @@ body {
     .portfolio-top-row { flex-direction: column; }
     .portfolio-summary { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .portfolio-pie-wrap { min-width: unset; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: center; }
-    .portfolio-add-form { flex-direction: column; gap: 8px; }
+    .pf-add-toggle {
+        display: flex; align-items: center; gap: 8px;
+        width: 100%; padding: 12px 16px;
+        background: var(--surface); border: 1px solid var(--border2);
+        border-radius: var(--radius-sm);
+        color: var(--accent2); font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: background 0.2s;
+    }
+    .pf-add-toggle:hover { background: var(--surface2); }
+    .pf-add-chevron { margin-left: auto; transition: transform 0.2s; }
+    .pf-add-toggle.open .pf-add-chevron { transform: rotate(180deg); }
+    .portfolio-add-form { display: none; flex-direction: column; gap: 8px; padding-top: 10px; }
+    .portfolio-add-form.open { display: flex; }
     .pf-input-ticker, .pf-input-num { width: 100%; }
     .pf-add-btn { position: static; transform: none; width: 100%; border-radius: var(--radius-sm); justify-content: center; }
     #portfolioTable { font-size: 11px; }
@@ -2275,7 +2293,7 @@ body {
     .stats-bar { grid-template-columns: 1fr 1fr; gap: 8px; }
     .stat-value { font-size: 18px; }
     .stat-card { padding: 10px; }
-    .portfolio-summary { grid-template-columns: 1fr; }
+    .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
     .breakout-box { grid-template-columns: 1fr; }
     .badges { gap: 4px; }
     .badge { font-size: 10px; padding: 4px 10px; }

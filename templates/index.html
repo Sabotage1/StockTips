@@ -296,15 +296,22 @@
             </div>
         </div>
 
-        <div class="portfolio-add-form">
-            <input type="text" id="pfTicker" placeholder="Ticker" maxlength="10" class="filter-input pf-input-ticker" spellcheck="false" autocomplete="off">
-            <input type="number" id="pfShares" placeholder="Shares" class="filter-input pf-input-num" min="0" step="any">
-            <input type="number" id="pfPrice" placeholder="Avg Cost $" class="filter-input pf-input-num" min="0" step="any">
-            <input type="number" id="pfStopLoss" placeholder="Stop Loss $" class="filter-input pf-input-num" min="0" step="any">
-            <button class="btn-go pf-add-btn" onclick="addStockToPortfolio()">
-                <span class="btn-text">Add</span>
-                <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <div class="portfolio-add-wrap">
+            <button class="pf-add-toggle" onclick="toggleAddStockForm()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Add Stock</span>
+                <svg class="pf-add-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
+            <div class="portfolio-add-form" id="portfolioAddForm">
+                <input type="text" id="pfTicker" placeholder="Ticker" maxlength="10" class="filter-input pf-input-ticker" spellcheck="false" autocomplete="off">
+                <input type="number" id="pfShares" placeholder="Shares" class="filter-input pf-input-num" min="0" step="any">
+                <input type="number" id="pfPrice" placeholder="Avg Cost $" class="filter-input pf-input-num" min="0" step="any">
+                <input type="number" id="pfStopLoss" placeholder="Stop Loss $" class="filter-input pf-input-num" min="0" step="any">
+                <button class="btn-go pf-add-btn" onclick="addStockToPortfolio()">
+                    <span class="btn-text">Add</span>
+                    <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+            </div>
         </div>
 
         <div class="table-wrap" id="portfolioTableWrap">

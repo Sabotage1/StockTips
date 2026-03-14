@@ -1398,6 +1398,13 @@ function renderPortfolioTable(items) {
     }).join('');
 }
 
+function toggleAddStockForm() {
+    var btn = document.querySelector('.pf-add-toggle');
+    var form = document.getElementById('portfolioAddForm');
+    btn.classList.toggle('open');
+    form.classList.toggle('open');
+}
+
 async function addStockToPortfolio() {
     var ticker = document.getElementById('pfTicker').value.trim().toUpperCase();
     var shares = parseFloat(document.getElementById('pfShares').value);
